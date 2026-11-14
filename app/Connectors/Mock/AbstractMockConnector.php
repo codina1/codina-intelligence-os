@@ -100,6 +100,7 @@ abstract class AbstractMockConnector implements ExternalConnectorInterface
             'invalid_payload' => ['code' => 'invalid_payload', 'message' => 'Fixture payload failed validation.', 'status' => 422],
             'rate_limit' => ['code' => 'rate_limit', 'message' => 'Mock rate limit exceeded.', 'status' => 429],
             'unauthorized' => ['code' => 'unauthorized', 'message' => 'Mock credentials rejected.', 'status' => 401],
+            'timeout' => ['code' => 'timeout', 'message' => 'Mock upstream timeout.', 'status' => 504],
             'temporary_failure' => ['code' => 'temporary_failure', 'message' => 'Mock upstream temporary failure.', 'status' => 503],
             'repeated_sync' => ['code' => 'repeated_sync', 'message' => 'Repeated sync request ignored by mock.', 'status' => 409],
         ];

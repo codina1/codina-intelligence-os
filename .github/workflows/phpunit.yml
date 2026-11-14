@@ -1,4 +1,4 @@
-name: Phase 01 PHPUnit
+name: Phase 02A PHPUnit
 
 on:
   push:
@@ -75,6 +75,28 @@ jobs:
       - name: Run migrations on isolated CI database
         run: php artisan migrate --force --no-interaction
 
+      - name: Phase 01 regression suite
+        run: |
+          echo "::group::Phase 01 regression"
+          ./vendor/bin/phpunit --colors=never \
+            tests/Feature/Api \
+            tests/Feature/Environment \
+            tests/Feature/Identity \
+            tests/Feature/Infrastructure \
+            tests/Feature/Security \
+            tests/Feature/Tenancy \
+            tests/Feature/Connectors/MockConnectorTest.php \
+            tests/Unit
+          echo "::endgroup::"
+
+      - name: Phase 02A registry suite
+        run: |
+          echo "::group::Phase 02A"
+          ./vendor/bin/phpunit --colors=never \
+            tests/Feature/Connectors/DataSourceRegistryTest.php \
+            tests/Feature/Connectors/DataSourceSecurityTest.php
+          echo "::endgroup::"
+
       - name: Critical security & concurrency suite (fail on skipped)
         run: |
           echo "::group::Critical tests"
@@ -90,8 +112,10 @@ jobs:
       - name: Summarize concurrency and security results
         if: always()
         run: |
-          echo "## Phase 01 CI results" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Phase 02A CI results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Phase 01 regression: see job logs" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Phase 02A registry/security: see job logs" >> "$GITHUB_STEP_SUMMARY"
           echo "- Critical group (security/concurrency): see job logs" >> "$GITHUB_STEP_SUMMARY"
           echo "- Full suite JUnit: junit.xml artifact" >> "$GITHUB_STEP_SUMMARY"
           echo "- External HTTP: CODINA_ALLOW_EXTERNAL_HTTP=false" >> "$GITHUB_STEP_SUMMARY"

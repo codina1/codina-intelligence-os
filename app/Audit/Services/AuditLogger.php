@@ -32,7 +32,18 @@ class AuditLogger
 
     private function sanitize(array $payload): array
     {
-        $sensitive = ['password', 'token', 'secret', 'api_key', 'authorization', 'credentials'];
+        $sensitive = [
+            'password',
+            'token',
+            'secret',
+            'api_key',
+            'authorization',
+            'credentials',
+            'secret_reference',
+            'client_secret',
+            'refresh_token',
+            'access_token',
+        ];
 
         foreach ($payload as $key => $value) {
             if (in_array(strtolower((string) $key), $sensitive, true)) {
