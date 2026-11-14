@@ -2,7 +2,8 @@
 
 **Date:** 2026-11-14  
 **Base commit:** `24a63537b7b15d6445c0215c7d25e5d45cfb9554`  
-**Environment:** Local MariaDB `codina_ios_test` @ `127.0.0.1`  
+**CI-verified HEAD:** `6e88177d3c87944a51dc176b7be654ee9f6a6ab2`  
+**Environment:** Local + GitHub Actions MariaDB `codina_ios_test` @ `127.0.0.1`  
 **External HTTP:** `CODINA_ALLOW_EXTERNAL_HTTP=false`
 
 ## Local results (pre-push)
@@ -23,4 +24,12 @@ Phase 01 regression included in the full suite remains green.
 
 ## CI
 
-GitHub Actions workflow `.github/workflows/phpunit.yml` extended for Phase 02A ordering. Final CI run URL recorded in the completion report after push.
+| Item | Value |
+| --- | --- |
+| Workflow | Phase 02A PHPUnit |
+| Tip SHA | `6e88177d3c87944a51dc176b7be654ee9f6a6ab2` |
+| Checks | 2 completed, 0 failures |
+| PR run | https://github.com/codina1/codina-intelligence-os/actions/runs/43570988497 |
+| Push run | https://github.com/codina1/codina-intelligence-os/actions/runs/43570984272 |
+
+Conclusion: **success**
