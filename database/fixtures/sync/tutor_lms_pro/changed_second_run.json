@@ -1,0 +1,72 @@
+[
+    {
+        "id": 1,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 1",
+        "status": "publish"
+    },
+    {
+        "id": 2,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 2",
+        "status": "publish"
+    },
+    {
+        "id": 3,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Changed on second run tutor_lms_pro",
+        "status": "publish"
+    },
+    {
+        "id": 4,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 4",
+        "status": "publish"
+    },
+    {
+        "id": 5,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 5",
+        "status": "publish"
+    },
+    {
+        "id": 6,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 6",
+        "status": "publish"
+    },
+    {
+        "id": 7,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 7",
+        "status": "publish"
+    },
+    {
+        "id": 8,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 8",
+        "status": "publish"
+    },
+    {
+        "id": 9,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 9",
+        "status": "publish"
+    },
+    {
+        "id": 10,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Fixture tutor_lms_pro item 10",
+        "status": "publish"
+    }
+]

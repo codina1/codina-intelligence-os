@@ -1,0 +1,9 @@
+[
+    {
+        "id": 1,
+        "source": "woocommerce",
+        "schema_version": "9.9",
+        "name": "Bad schema",
+        "api_token": "should-reject"
+    }
+]

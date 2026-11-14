@@ -1,0 +1,177 @@
+[
+    {
+        "id": 1,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 1",
+        "clicks": 1
+    },
+    {
+        "id": 2,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 2",
+        "clicks": 2
+    },
+    {
+        "id": 3,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 3",
+        "clicks": 3
+    },
+    {
+        "id": 4,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 4",
+        "clicks": 4
+    },
+    {
+        "id": 5,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 5",
+        "clicks": 5
+    },
+    {
+        "id": 6,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 6",
+        "clicks": 6
+    },
+    {
+        "id": 7,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 7",
+        "clicks": 7
+    },
+    {
+        "id": 8,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 8",
+        "clicks": 8
+    },
+    {
+        "id": 9,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 9",
+        "clicks": 9
+    },
+    {
+        "id": 10,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 10",
+        "clicks": 10
+    },
+    {
+        "id": 11,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 11",
+        "clicks": 11
+    },
+    {
+        "id": 12,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 12",
+        "clicks": 12
+    },
+    {
+        "id": 13,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 13",
+        "clicks": 13
+    },
+    {
+        "id": 14,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 14",
+        "clicks": 14
+    },
+    {
+        "id": 15,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 15",
+        "clicks": 15
+    },
+    {
+        "id": 16,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 16",
+        "clicks": 16
+    },
+    {
+        "id": 17,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 17",
+        "clicks": 17
+    },
+    {
+        "id": 18,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 18",
+        "clicks": 18
+    },
+    {
+        "id": 19,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 19",
+        "clicks": 19
+    },
+    {
+        "id": 20,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 20",
+        "clicks": 20
+    },
+    {
+        "id": 21,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 21",
+        "clicks": 21
+    },
+    {
+        "id": 22,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 22",
+        "clicks": 22
+    },
+    {
+        "id": 23,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 23",
+        "clicks": 23
+    },
+    {
+        "id": 24,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 24",
+        "clicks": 24
+    },
+    {
+        "id": 25,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 25",
+        "clicks": 25
+    }
+]

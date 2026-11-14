@@ -19,7 +19,18 @@ class ProviderRegistry
                 capabilities: $connector->capabilities(),
                 authMethods: $this->authMethodsFor($key),
                 settingsSchema: $this->settingsSchema(),
-                fixtureDatasets: ['success', 'empty', 'invalid_payload'],
+                fixtureDatasets: [
+                    'success',
+                    'empty',
+                    'invalid_payload',
+                    'paginated_25',
+                    'incremental',
+                    'incremental_multipage',
+                    'missing_external_id',
+                    'invalid_schema',
+                    'duplicate_ids',
+                    'changed_second_run',
+                ],
                 mockOnly: true,
             );
         }
@@ -86,7 +97,18 @@ class ProviderRegistry
             'fixture_dataset' => [
                 'type' => 'string',
                 'required' => false,
-                'enum' => ['success', 'empty', 'invalid_payload'],
+                'enum' => [
+                    'success',
+                    'empty',
+                    'invalid_payload',
+                    'paginated_25',
+                    'incremental',
+                    'incremental_multipage',
+                    'missing_external_id',
+                    'invalid_schema',
+                    'duplicate_ids',
+                    'changed_second_run',
+                ],
                 'description' => 'Local fixture dataset name',
             ],
             'pagination_size' => [
@@ -107,8 +129,17 @@ class ProviderRegistry
                     'invalid_payload',
                     'temporary_failure',
                     'empty',
+                    'timeout_page_2',
+                    'rate_limit_page_2',
+                    'cursor_loop',
                 ],
-                'description' => 'Mock error/empty scenario for connection tests',
+                'description' => 'Mock error/empty scenario for connection tests and sync engine',
+            ],
+            'incremental_dataset' => [
+                'type' => 'string',
+                'required' => false,
+                'enum' => ['incremental', 'incremental_multipage'],
+                'description' => 'Mock incremental change-stream fixture name',
             ],
             'reporting_timezone' => [
                 'type' => 'string',

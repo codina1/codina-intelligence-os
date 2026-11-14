@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\DataSourceController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MockConnectorController;
 use App\Http\Controllers\Api\V1\SiteController;
+use App\Http\Controllers\Api\V1\SyncRunController;
 use App\Http\Controllers\Api\V1\TenantController;
 use Illuminate\Support\Facades\Route;
 
@@ -77,6 +78,26 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/data-sources/{id}/disable', [DataSourceController::class, 'disable'])
             ->middleware('throttle:api-writes')
             ->name('api.v1.data-sources.disable');
+
+        Route::post('/data-sources/{id}/sync', [SyncRunController::class, 'start'])
+            ->middleware('throttle:api-writes')
+            ->name('api.v1.data-sources.sync');
+        Route::get('/data-sources/{id}/checkpoints', [SyncRunController::class, 'checkpoints'])
+            ->name('api.v1.data-sources.checkpoints');
+        Route::get('/data-sources/{id}/sync-health', [SyncRunController::class, 'health'])
+            ->name('api.v1.data-sources.sync-health');
+
+        Route::get('/sync-runs', [SyncRunController::class, 'index'])
+            ->name('api.v1.sync-runs.index');
+        Route::get('/sync-runs/{id}', [SyncRunController::class, 'show'])
+            ->name('api.v1.sync-runs.show');
+        Route::get('/sync-runs/{id}/attempts', [SyncRunController::class, 'attempts'])
+            ->name('api.v1.sync-runs.attempts');
+        Route::post('/sync-runs/{id}/retry', [SyncRunController::class, 'retry'])
+            ->middleware('throttle:api-writes')
+            ->name('api.v1.sync-runs.retry');
+        Route::post('/sync-runs/{id}/cancel', [SyncRunController::class, 'cancel'])
+            ->middleware('throttle:api-writes')
+            ->name('api.v1.sync-runs.cancel');
     });
 });
-

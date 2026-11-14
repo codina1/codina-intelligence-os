@@ -1,0 +1,177 @@
+[
+    {
+        "id": 1,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 1",
+        "status": "published"
+    },
+    {
+        "id": 2,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 2",
+        "status": "published"
+    },
+    {
+        "id": 3,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 3",
+        "status": "published"
+    },
+    {
+        "id": 4,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 4",
+        "status": "published"
+    },
+    {
+        "id": 5,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 5",
+        "status": "published"
+    },
+    {
+        "id": 6,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 6",
+        "status": "published"
+    },
+    {
+        "id": 7,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 7",
+        "status": "published"
+    },
+    {
+        "id": 8,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 8",
+        "status": "published"
+    },
+    {
+        "id": 9,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 9",
+        "status": "published"
+    },
+    {
+        "id": 10,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 10",
+        "status": "published"
+    },
+    {
+        "id": 11,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 11",
+        "status": "published"
+    },
+    {
+        "id": 12,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 12",
+        "status": "published"
+    },
+    {
+        "id": 13,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 13",
+        "status": "published"
+    },
+    {
+        "id": 14,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 14",
+        "status": "published"
+    },
+    {
+        "id": 15,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 15",
+        "status": "published"
+    },
+    {
+        "id": 16,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 16",
+        "status": "published"
+    },
+    {
+        "id": 17,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 17",
+        "status": "published"
+    },
+    {
+        "id": 18,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 18",
+        "status": "published"
+    },
+    {
+        "id": 19,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 19",
+        "status": "published"
+    },
+    {
+        "id": 20,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 20",
+        "status": "published"
+    },
+    {
+        "id": 21,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 21",
+        "status": "published"
+    },
+    {
+        "id": 22,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 22",
+        "status": "published"
+    },
+    {
+        "id": 23,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 23",
+        "status": "published"
+    },
+    {
+        "id": 24,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 24",
+        "status": "published"
+    },
+    {
+        "id": 25,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 25",
+        "status": "published"
+    }
+]

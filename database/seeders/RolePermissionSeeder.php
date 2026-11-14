@@ -17,6 +17,7 @@ class RolePermissionSeeder extends Seeder
             'sites.manage' => 'Manage sites',
             'connectors.view' => 'View connectors',
             'connectors.manage' => 'Manage connectors',
+            'sync.manage' => 'Manage sync runs',
             'audit.view' => 'View audit logs',
             'platform.admin' => 'Platform administration',
         ];
@@ -43,6 +44,7 @@ class RolePermissionSeeder extends Seeder
                     'sites.manage',
                     'connectors.view',
                     'connectors.manage',
+                    'sync.manage',
                     'audit.view',
                 ],
             ],
@@ -54,8 +56,10 @@ class RolePermissionSeeder extends Seeder
                     'sites.view',
                     'sites.manage',
                     'connectors.view',
+                    'sync.manage',
                 ],
             ],
+
             'analyst' => [
                 'name' => 'Analyst',
                 'is_platform_role' => false,

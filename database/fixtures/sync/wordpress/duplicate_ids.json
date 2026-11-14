@@ -1,0 +1,23 @@
+[
+    {
+        "id": 7,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Dup A",
+        "status": "published"
+    },
+    {
+        "id": 7,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Dup B",
+        "status": "published"
+    },
+    {
+        "id": 8,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Unique",
+        "status": "published"
+    }
+]

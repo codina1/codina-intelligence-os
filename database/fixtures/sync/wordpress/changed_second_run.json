@@ -1,0 +1,72 @@
+[
+    {
+        "id": 1,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 1",
+        "status": "published"
+    },
+    {
+        "id": 2,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 2",
+        "status": "published"
+    },
+    {
+        "id": 3,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Changed on second run wordpress",
+        "status": "published"
+    },
+    {
+        "id": 4,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 4",
+        "status": "published"
+    },
+    {
+        "id": 5,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 5",
+        "status": "published"
+    },
+    {
+        "id": 6,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 6",
+        "status": "published"
+    },
+    {
+        "id": 7,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 7",
+        "status": "published"
+    },
+    {
+        "id": 8,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 8",
+        "status": "published"
+    },
+    {
+        "id": 9,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 9",
+        "status": "published"
+    },
+    {
+        "id": 10,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Fixture wordpress item 10",
+        "status": "published"
+    }
+]

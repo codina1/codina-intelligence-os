@@ -1,0 +1,56 @@
+{
+    "initial_watermark": "2026-01-01T00:00:00Z",
+    "final_watermark": "2026-01-01T16:00:00Z",
+    "changes": [
+        {
+            "changed_at": "2026-01-01T11:00:00Z",
+            "record": {
+                "id": 201,
+                "source": "wordpress",
+                "schema_version": "1.0",
+                "title": "Incremental wordpress change 1",
+                "status": "published"
+            }
+        },
+        {
+            "changed_at": "2026-01-01T12:00:00Z",
+            "record": {
+                "id": 202,
+                "source": "wordpress",
+                "schema_version": "1.0",
+                "title": "Incremental wordpress change 2",
+                "status": "published"
+            }
+        },
+        {
+            "changed_at": "2026-01-01T13:00:00Z",
+            "record": {
+                "id": 203,
+                "source": "wordpress",
+                "schema_version": "1.0",
+                "title": "Incremental wordpress change 3",
+                "status": "published"
+            }
+        },
+        {
+            "changed_at": "2026-01-01T14:00:00Z",
+            "record": {
+                "id": 204,
+                "source": "wordpress",
+                "schema_version": "1.0",
+                "title": "Incremental wordpress change 4",
+                "status": "published"
+            }
+        },
+        {
+            "changed_at": "2026-01-01T15:00:00Z",
+            "record": {
+                "id": 205,
+                "source": "wordpress",
+                "schema_version": "1.0",
+                "title": "Incremental wordpress change 5",
+                "status": "published"
+            }
+        }
+    ]
+}

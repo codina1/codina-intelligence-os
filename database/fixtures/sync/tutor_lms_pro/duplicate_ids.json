@@ -1,0 +1,23 @@
+[
+    {
+        "id": 7,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Dup A",
+        "status": "publish"
+    },
+    {
+        "id": 7,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Dup B",
+        "status": "publish"
+    },
+    {
+        "id": 8,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Unique",
+        "status": "publish"
+    }
+]

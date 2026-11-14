@@ -1,0 +1,14 @@
+[
+    {
+        "source": "google_analytics_4",
+        "schema_version": "1.0",
+        "metric": "Missing id"
+    },
+    {
+        "id": 2,
+        "source": "google_analytics_4",
+        "schema_version": "1.0",
+        "metric": "Valid",
+        "value": 10
+    }
+]
