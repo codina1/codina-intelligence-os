@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\Connectors\Contracts\SecretStoreInterface;
 use App\Connectors\Registry\ConnectorRegistry;
+use App\Connectors\Registry\ProviderRegistry;
+use App\Connectors\Secrets\NullSecretStore;
 use App\Shared\Contracts\AiProviderInterface;
 use App\Shared\Support\NullAiProvider;
 use App\Tenancy\Services\TenantContext;
@@ -17,6 +20,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(TenantContext::class);
         $this->app->singleton(ConnectorRegistry::class);
+        $this->app->singleton(ProviderRegistry::class);
+        $this->app->singleton(SecretStoreInterface::class, NullSecretStore::class);
         $this->app->bind(AiProviderInterface::class, NullAiProvider::class);
     }
 
