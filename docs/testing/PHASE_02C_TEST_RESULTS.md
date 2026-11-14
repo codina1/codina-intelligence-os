@@ -8,4 +8,11 @@
 | External HTTP | none (preventStrayRequests + assertions) |
 | DB | local/CI MariaDB only |
 
-Results recorded before PR CI; CI URLs stamped in completion report after green HEAD.
+## CI on tip `04f7db545cbdad10719c07cdb2d3d283f86d1d1c`
+
+| Trigger | URL | Result |
+| --- | --- | --- |
+| push | https://github.com/codina1/codina-intelligence-os/actions/runs/43589273455 | success |
+| pull_request | https://github.com/codina1/codina-intelligence-os/actions/runs/43589286155 | success |
+
+2 checks, 0 failures.
