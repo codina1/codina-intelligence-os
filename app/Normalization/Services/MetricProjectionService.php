@@ -20,75 +20,92 @@ class MetricProjectionService
         IngestionRecord $record,
         NormalizedMetric $normalized,
     ): array {
-        return DB::transaction(function () use ($source, $record, $normalized) {
-            $observation = MetricObservation::query()
-                ->where('data_source_id', $source->id)
-                ->where('observation_identity_hash', $normalized->observationIdentityHash)
-                ->lockForUpdate()
-                ->first();
+        $work = function () use ($source, $record, $normalized) {
+            return $this->projectWithinTransaction($source, $record, $normalized);
+        };
 
-            if ($observation === null) {
-                try {
-                    $observation = MetricObservation::query()->create([
-                        'public_id' => (string) Str::uuid(),
-                        'tenant_id' => $source->tenant_id,
-                        'site_id' => $source->site_id,
-                        'data_source_id' => $source->id,
-                        'source_ingestion_record_id' => $record->id,
-                        'provider' => $normalized->provider,
-                        'metric_key' => $normalized->metricKey,
-                        'metric_value' => $normalized->metricValue,
-                        'unit' => $normalized->unit,
-                        'dimensions_json' => $normalized->dimensions,
-                        'observation_identity_hash' => $normalized->observationIdentityHash,
-                        'period_start' => $normalized->periodStart,
-                        'period_end' => $normalized->periodEnd,
-                        'observed_at' => $normalized->observedAt,
-                        'source_payload_hash' => $normalized->sourcePayloadHash,
-                        'mapper_version' => $normalized->mapperVersion,
-                    ]);
+        if (DB::transactionLevel() > 0) {
+            return $work();
+        }
 
-                    return ['outcome' => 'created', 'observation' => $observation];
-                } catch (UniqueConstraintViolationException) {
-                    $observation = MetricObservation::query()
-                        ->where('data_source_id', $source->id)
-                        ->where('observation_identity_hash', $normalized->observationIdentityHash)
-                        ->lockForUpdate()
-                        ->firstOrFail();
-                }
+        return DB::transaction($work);
+    }
+
+    /**
+     * @return array{outcome: string, observation: MetricObservation}
+     */
+    private function projectWithinTransaction(
+        DataSource $source,
+        IngestionRecord $record,
+        NormalizedMetric $normalized,
+    ): array {
+        $observation = MetricObservation::query()
+            ->where('data_source_id', $source->id)
+            ->where('observation_identity_hash', $normalized->observationIdentityHash)
+            ->lockForUpdate()
+            ->first();
+
+        if ($observation === null) {
+            try {
+                $observation = MetricObservation::query()->create([
+                    'public_id' => (string) Str::uuid(),
+                    'tenant_id' => $source->tenant_id,
+                    'site_id' => $source->site_id,
+                    'data_source_id' => $source->id,
+                    'source_ingestion_record_id' => $record->id,
+                    'provider' => $normalized->provider,
+                    'metric_key' => $normalized->metricKey,
+                    'metric_value' => $normalized->metricValue,
+                    'unit' => $normalized->unit,
+                    'dimensions_json' => $normalized->dimensions,
+                    'observation_identity_hash' => $normalized->observationIdentityHash,
+                    'period_start' => $normalized->periodStart,
+                    'period_end' => $normalized->periodEnd,
+                    'observed_at' => $normalized->observedAt,
+                    'source_payload_hash' => $normalized->sourcePayloadHash,
+                    'mapper_version' => $normalized->mapperVersion,
+                ]);
+
+                return ['outcome' => 'created', 'observation' => $observation];
+            } catch (UniqueConstraintViolationException) {
+                $observation = MetricObservation::query()
+                    ->where('data_source_id', $source->id)
+                    ->where('observation_identity_hash', $normalized->observationIdentityHash)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+        }
+
+        $unchanged = $observation->source_payload_hash === $normalized->sourcePayloadHash
+            && $observation->metric_key === $normalized->metricKey
+            && $this->metricValuesEqual($observation->metric_value, $normalized->metricValue)
+            && $observation->unit === $normalized->unit
+            && $observation->dimensions_json == $normalized->dimensions;
+
+        if ($unchanged) {
+            if ((int) $observation->source_ingestion_record_id !== (int) $record->id) {
+                $observation->source_ingestion_record_id = $record->id;
+                $observation->save();
             }
 
-            $unchanged = $observation->source_payload_hash === $normalized->sourcePayloadHash
-                && $observation->metric_key === $normalized->metricKey
-                && $this->metricValuesEqual($observation->metric_value, $normalized->metricValue)
-                && $observation->unit === $normalized->unit
-                && $observation->dimensions_json == $normalized->dimensions;
+            return ['outcome' => 'unchanged', 'observation' => $observation->fresh()];
+        }
 
-            if ($unchanged) {
-                if ((int) $observation->source_ingestion_record_id !== (int) $record->id) {
-                    $observation->source_ingestion_record_id = $record->id;
-                    $observation->save();
-                }
+        $observation->fill([
+            'source_ingestion_record_id' => $record->id,
+            'metric_key' => $normalized->metricKey,
+            'metric_value' => $normalized->metricValue,
+            'unit' => $normalized->unit,
+            'dimensions_json' => $normalized->dimensions,
+            'period_start' => $normalized->periodStart,
+            'period_end' => $normalized->periodEnd,
+            'observed_at' => $normalized->observedAt,
+            'source_payload_hash' => $normalized->sourcePayloadHash,
+            'mapper_version' => $normalized->mapperVersion,
+        ]);
+        $observation->save();
 
-                return ['outcome' => 'unchanged', 'observation' => $observation->fresh()];
-            }
-
-            $observation->fill([
-                'source_ingestion_record_id' => $record->id,
-                'metric_key' => $normalized->metricKey,
-                'metric_value' => $normalized->metricValue,
-                'unit' => $normalized->unit,
-                'dimensions_json' => $normalized->dimensions,
-                'period_start' => $normalized->periodStart,
-                'period_end' => $normalized->periodEnd,
-                'observed_at' => $normalized->observedAt,
-                'source_payload_hash' => $normalized->sourcePayloadHash,
-                'mapper_version' => $normalized->mapperVersion,
-            ]);
-            $observation->save();
-
-            return ['outcome' => 'updated', 'observation' => $observation->fresh()];
-        });
+        return ['outcome' => 'updated', 'observation' => $observation->fresh()];
     }
 
     private function metricValuesEqual(mixed $stored, ?string $incoming): bool

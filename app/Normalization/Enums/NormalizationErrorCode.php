@@ -12,6 +12,7 @@ enum NormalizationErrorCode: string
     case ExternalIdMismatch = 'external_id_mismatch';
     case NoCommittedStaging = 'no_committed_staging';
     case InadmissibleProvenance = 'inadmissible_provenance';
+    case StagingMutated = 'staging_mutated';
     case ActiveRunConflict = 'active_run_conflict';
     case StaleLease = 'stale_lease';
     case ForbiddenMode = 'forbidden_mode';

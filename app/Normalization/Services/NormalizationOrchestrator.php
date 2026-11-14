@@ -150,13 +150,39 @@ class NormalizationOrchestrator
                 $this->runner->run($run->fresh(), $lease);
             });
         } catch (DomainException $e) {
-            if ($e->getMessage() === NormalizationErrorCode::ActiveRunConflict->value
-                || $e->getMessage() === NormalizationErrorCode::StaleLease->value) {
+            if ($e->getMessage() === NormalizationErrorCode::StaleLease->value) {
+                $fresh = $run->fresh() ?? $run;
+                $lease = [
+                    'owner' => (string) ($fresh->lease_owner ?? ''),
+                    'generation' => (int) ($fresh->generation ?? 0),
+                ];
+                $this->leases->applyStaleWorkerAbort($fresh, $lease);
+                $this->auditLogger->log('normalization.stale_lease_abort', $user, $fresh, [
+                    'reason' => 'lease_conflict',
+                    'error_code' => NormalizationErrorCode::StaleLease->value,
+                ], (int) $fresh->tenant_id);
+
+                return;
+            }
+
+            if ($e->getMessage() === NormalizationErrorCode::ActiveRunConflict->value) {
+                $this->failTerminal(
+                    $run->fresh() ?? $run,
+                    $user,
+                    NormalizationErrorCode::ActiveRunConflict,
+                    'lease_conflict'
+                );
+
+                return;
+            }
+
+            if ($e->getMessage() === NormalizationErrorCode::ForbiddenMode->value
+                || $e->getMessage() === NormalizationErrorCode::SourceDisabled->value) {
                 $this->failTerminal(
                     $run->fresh() ?? $run,
                     $user,
                     NormalizationErrorCode::from($e->getMessage()),
-                    'lease_conflict'
+                    'source_not_eligible_mid_run'
                 );
 
                 return;
@@ -271,23 +297,39 @@ class NormalizationOrchestrator
         NormalizationErrorCode $code,
         string $reason,
     ): void {
-        if ($run->status === NormalizationRunStatus::Completed
-            || $run->status === NormalizationRunStatus::CompletedWithErrors) {
+        $fresh = $run->fresh() ?? $run;
+
+        if ($fresh->status === NormalizationRunStatus::Completed
+            || $fresh->status === NormalizationRunStatus::CompletedWithErrors) {
             return;
         }
 
-        $run->forceFill([
-            'status' => NormalizationRunStatus::Failed,
-            'finished_at' => CarbonImmutable::now(),
-            'last_error_code' => $code->value,
-        ])->save();
+        $leaseOwner = $fresh->lease_owner;
+        $generation = $fresh->generation;
 
-        $this->auditLogger->log('normalization.execution_denied', $user, $run, [
+        if ($leaseOwner !== null && $generation !== null) {
+            $this->leases->markTerminalIfStillOwner(
+                $fresh,
+                ['owner' => (string) $leaseOwner, 'generation' => (int) $generation],
+                NormalizationRunStatus::Failed,
+                ['last_error_code' => $code->value],
+                release: true,
+            );
+        } else {
+            if ($fresh->status !== NormalizationRunStatus::Failed) {
+                $fresh->forceFill([
+                    'status' => NormalizationRunStatus::Failed,
+                    'finished_at' => CarbonImmutable::now(),
+                    'last_error_code' => $code->value,
+                ])->save();
+            }
+            $this->leases->release($fresh);
+        }
+
+        $this->auditLogger->log('normalization.execution_denied', $user, $fresh, [
             'reason' => $reason,
             'error_code' => $code->value,
-        ], (int) $run->tenant_id);
-
-        $this->leases->release($run);
+        ], (int) $fresh->tenant_id);
     }
 
     private function terminateUnauthorized(int $runId, int $tenantId, ?User $user, string $reason): void
