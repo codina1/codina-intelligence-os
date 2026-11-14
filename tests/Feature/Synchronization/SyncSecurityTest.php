@@ -97,7 +97,7 @@ class SyncSecurityTest extends TestCase
         }
     }
 
-    public function test_public_api_does_not_accept_lease_overrides(): void
+    public function test_public_api_rejects_lease_overrides_and_internal_options(): void
     {
         [$user, $tenant] = $this->makeTenantUser('tenant_owner');
         $sourceId = $this->createSyncSource($user, $tenant, 'wordpress', [
@@ -105,7 +105,7 @@ class SyncSecurityTest extends TestCase
             'pagination_size' => 25,
         ]);
 
-        $response = $this->actingAs($user)->postJsonWithCsrf('/api/v1/data-sources/'.$sourceId.'/sync', [
+        $this->actingAs($user)->postJsonWithCsrf('/api/v1/data-sources/'.$sourceId.'/sync', [
             'sync_type' => 'full',
             'entity_type' => 'posts',
             'options' => [
@@ -114,11 +114,16 @@ class SyncSecurityTest extends TestCase
                 'tenant_id' => 12345,
                 'fencing_token' => 'nope',
             ],
+        ])->assertStatus(422);
+
+        $ok = $this->actingAs($user)->postJsonWithCsrf('/api/v1/data-sources/'.$sourceId.'/sync', [
+            'sync_type' => 'full',
+            'entity_type' => 'posts',
         ])->assertStatus(202);
 
-        $this->assertSame('completed', $response->json('data.status'));
-        $this->assertArrayNotHasKey('lease_owner', $response->json('data'));
-        $this->assertArrayNotHasKey('generation', $response->json('data'));
+        $this->assertSame('completed', $ok->json('data.status'));
+        $this->assertArrayNotHasKey('lease_owner', $ok->json('data'));
+        $this->assertArrayNotHasKey('generation', $ok->json('data'));
     }
 
     public function test_http_prevent_stray_requests_during_security_suite(): void

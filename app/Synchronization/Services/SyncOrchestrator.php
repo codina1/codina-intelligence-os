@@ -18,6 +18,7 @@ use App\Synchronization\Enums\SyncErrorCode;
 use App\Synchronization\Enums\SyncRunStatus;
 use App\Synchronization\Enums\SyncType;
 use App\Synchronization\Jobs\ExecuteSyncRunJob;
+use App\Synchronization\Validators\SyncOptionsValidator;
 use App\Synchronization\Validators\SyncRecordValidator;
 use App\Tenancy\Services\TenantContext;
 use Carbon\CarbonImmutable;
@@ -40,6 +41,7 @@ class SyncOrchestrator
         private readonly AuditLogger $auditLogger,
         private readonly ProviderRegistry $providers,
         private readonly SyncRecordValidator $validator,
+        private readonly SyncOptionsValidator $optionsValidator,
         private readonly SyncLeaseManager $leases,
         private readonly CheckpointManager $checkpoints,
         private readonly SyncRunner $runner,
@@ -80,7 +82,7 @@ class SyncOrchestrator
             throw new DomainException(SyncErrorCode::ForbiddenMode->value);
         }
 
-        $options = [
+        $defaults = [
             'scenario' => $source->settings['fixture_dataset'] ?? 'success',
             'per_page' => $source->settings['pagination_size'] ?? config('sync.default_page_size'),
             'error_scenario' => $source->settings['simulated_error_scenario'] ?? 'none',
@@ -88,16 +90,8 @@ class SyncOrchestrator
             'simulated' => true,
         ];
 
-        if (isset($input['options']) && is_array($input['options'])) {
-            // Public clients may not submit lease/generation/tenant overrides.
-            unset(
-                $input['options']['lease_owner'],
-                $input['options']['generation'],
-                $input['options']['tenant_id'],
-                $input['options']['fencing_token'],
-            );
-            $options = array_merge($options, $input['options']);
-        }
+        $publicOptions = (isset($input['options']) && is_array($input['options'])) ? $input['options'] : [];
+        $options = $this->optionsValidator->validatePublicOptions($publicOptions, $defaults);
 
         $tenant = $source->tenant()->first() ?? Tenant::query()->findOrFail($source->tenant_id);
 
@@ -146,6 +140,9 @@ class SyncOrchestrator
                         'completeness_status' => 'pending',
                     ]);
 
+                    // Reserve scope immediately so a second queued run cannot race before lease acquire.
+                    $this->leases->reserveForQueuedRun($run);
+
                     $this->checkpoints->getOrCreate($run);
 
                     $this->auditLogger->log('sync_run.queued', $user, $run, [
@@ -186,11 +183,14 @@ class SyncOrchestrator
         $tenant = Tenant::query()->findOrFail($source->tenant_id);
 
         $this->tenantContext->runWithTenant($tenant, function () use ($user, $run, $source) {
-            $options = $run->options_json ?? [];
-            $options['scenario'] = $source->settings['fixture_dataset'] ?? ($options['scenario'] ?? 'success');
-            $options['per_page'] = $source->settings['pagination_size'] ?? ($options['per_page'] ?? config('sync.default_page_size'));
-            $options['error_scenario'] = $source->settings['simulated_error_scenario'] ?? 'none';
-            $options['incremental_dataset'] = $source->settings['incremental_dataset'] ?? 'incremental';
+            $defaults = [
+                'scenario' => $source->settings['fixture_dataset'] ?? (($run->options_json['scenario'] ?? null) ?? 'success'),
+                'per_page' => $source->settings['pagination_size'] ?? (($run->options_json['per_page'] ?? null) ?? config('sync.default_page_size')),
+                'error_scenario' => $source->settings['simulated_error_scenario'] ?? 'none',
+                'incremental_dataset' => $source->settings['incremental_dataset'] ?? 'incremental',
+                'simulated' => true,
+            ];
+            $options = $this->optionsValidator->validatePublicOptions([], $defaults);
 
             if ($run->status === SyncRunStatus::Failed) {
                 if (! $run->status->canTransitionTo(SyncRunStatus::Queued)) {
@@ -211,6 +211,10 @@ class SyncOrchestrator
                     'last_error_summary' => null,
                 ])->save();
             }
+
+            // Re-reserve scope before dispatch so concurrent starts cannot sneak in.
+            $this->leases->ensureScopeRow($run);
+            $this->leases->reserveForQueuedRun($run->fresh());
 
             $this->auditLogger->log('sync_run.retry_requested', $user, $run, [
                 'simulated' => true,

@@ -8,7 +8,6 @@ use App\Synchronization\DTOs\SyncCursor;
 use App\Synchronization\Enums\SyncType;
 use DomainException;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 
 class CheckpointManager
 {
@@ -46,44 +45,60 @@ class CheckpointManager
         }
     }
 
+    /**
+     * Committed change-stream watermark only (never a pagination page cursor).
+     */
+    public function committedSince(SyncCheckpoint $checkpoint): ?string
+    {
+        $watermark = $checkpoint->committed_watermark_json;
+        if (! is_array($watermark)) {
+            return null;
+        }
+
+        if (isset($watermark['since']) && is_string($watermark['since'])) {
+            return $watermark['since'];
+        }
+
+        // Legacy remediation: ignore previous cursor-shaped watermarks for pagination.
+        return null;
+    }
+
     public function startingCursor(SyncRun $run, SyncCheckpoint $checkpoint): SyncCursor
     {
+        $isRetry = $this->isResumeOfSameRun($run, $checkpoint);
+
         if ($run->sync_type === SyncType::Full) {
-            // Resume full sync from last committed page when retrying the same lineage.
-            if ($run->retry_count > 0 && $checkpoint->last_completed_page > 0) {
+            if ($isRetry && $checkpoint->last_completed_page > 0) {
                 return SyncCursor::fromArray([
                     'page' => $checkpoint->last_completed_page + 1,
                 ]);
             }
 
-            // Fresh full sync resets page progress so re-running from page 1 is not a regression.
-            if ((int) $run->retry_count === 0 && (int) $checkpoint->last_completed_page > 0) {
-                $checkpoint->forceFill([
-                    'cursor_json' => SyncCursor::initial()->toArray(),
-                    'last_completed_page' => 0,
-                    'version' => ((int) $checkpoint->version) + 1,
-                ])->save();
-                $checkpoint->refresh();
+            if (! $isRetry && (int) $checkpoint->last_completed_page > 0) {
+                $this->resetPageProgress($checkpoint);
             }
 
             return SyncCursor::initial();
         }
 
-        // Incremental: start from committed watermark cursor when present.
-        $watermark = $checkpoint->committed_watermark_json;
-        if (is_array($watermark) && isset($watermark['cursor'])) {
-            return SyncCursor::fromArray($watermark['cursor']);
+        // Incremental: pagination always starts at page 1 for a new run.
+        // Retries resume the run-local page cursor; watermark filter stays separate.
+        if ($isRetry && $checkpoint->last_completed_page > 0) {
+            return SyncCursor::fromArray([
+                'page' => $checkpoint->last_completed_page + 1,
+            ]);
         }
 
-        if ($checkpoint->last_completed_page > 0 && is_array($checkpoint->cursor_json)) {
-            return SyncCursor::fromArray($checkpoint->cursor_json);
+        if (! $isRetry && (int) $checkpoint->last_completed_page > 0) {
+            $this->resetPageProgress($checkpoint);
         }
 
         return SyncCursor::initial();
     }
 
     /**
-     * Atomically advance checkpoint. Refuses regression of last_completed_page.
+     * Atomically advance run-local page cursor. Watermark advances only when requested
+     * after a fully successful incremental run.
      *
      * @param  array<string, mixed>|null  $cursorAfter
      * @param  array<string, mixed>|null  $watermark
@@ -96,36 +111,63 @@ class CheckpointManager
         ?array $watermark = null,
         bool $advanceWatermark = false,
     ): SyncCheckpoint {
-        return DB::transaction(function () use ($run, $checkpoint, $pageNumber, $cursorAfter, $watermark, $advanceWatermark) {
-            $locked = SyncCheckpoint::query()->withoutTenantIsolation()
-                ->whereKey($checkpoint->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+        $locked = SyncCheckpoint::query()->withoutTenantIsolation()
+            ->whereKey($checkpoint->id)
+            ->lockForUpdate()
+            ->firstOrFail();
 
-            if ($pageNumber < (int) $locked->last_completed_page) {
-                throw new DomainException('checkpoint_regression');
-            }
+        if ($pageNumber < (int) $locked->last_completed_page) {
+            throw new DomainException('checkpoint_regression');
+        }
 
-            if ($pageNumber === (int) $locked->last_completed_page) {
-                // Idempotent re-commit of the same page is allowed; do not bump version.
-                return $locked;
-            }
+        if ($pageNumber === (int) $locked->last_completed_page) {
+            // Idempotent re-commit of the same page; do not bump version or watermark.
+            return $locked;
+        }
 
-            $updates = [
-                'cursor_json' => $cursorAfter ?? $locked->cursor_json,
-                'last_completed_page' => $pageNumber,
+        // Pagination cursor only — strip any accidental watermark/page bleed.
+        $pageCursor = ['page' => isset($cursorAfter['page']) ? (int) $cursorAfter['page'] : ($pageNumber + 1)];
+
+        $updates = [
+            'cursor_json' => $pageCursor,
+            'last_completed_page' => $pageNumber,
+            'last_completed_run_id' => $run->id,
+            'version' => ((int) $locked->version) + 1,
+            'last_success_at' => now(),
+        ];
+
+        if ($advanceWatermark && $watermark !== null && isset($watermark['since'])) {
+            $updates['committed_watermark_json'] = [
+                'since' => (string) $watermark['since'],
+                'committed_at' => $watermark['committed_at'] ?? now()->toIso8601String(),
+                'simulated' => true,
                 'last_completed_run_id' => $run->id,
-                'version' => ((int) $locked->version) + 1,
-                'last_success_at' => now(),
             ];
+        }
 
-            if ($advanceWatermark && $watermark !== null) {
-                $updates['committed_watermark_json'] = $watermark;
-            }
+        $locked->forceFill($updates)->save();
 
-            $locked->forceFill($updates)->save();
+        return $locked->fresh();
+    }
 
-            return $locked->fresh();
-        });
+    private function isResumeOfSameRun(SyncRun $run, SyncCheckpoint $checkpoint): bool
+    {
+        if ((int) $run->retry_count > 0) {
+            return true;
+        }
+
+        return $checkpoint->last_completed_run_id !== null
+            && (int) $checkpoint->last_completed_run_id === (int) $run->id
+            && (int) $checkpoint->last_completed_page > 0;
+    }
+
+    private function resetPageProgress(SyncCheckpoint $checkpoint): void
+    {
+        $checkpoint->forceFill([
+            'cursor_json' => SyncCursor::initial()->toArray(),
+            'last_completed_page' => 0,
+            'version' => ((int) $checkpoint->version) + 1,
+        ])->save();
+        $checkpoint->refresh();
     }
 }

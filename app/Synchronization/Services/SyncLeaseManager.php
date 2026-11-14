@@ -36,6 +36,8 @@ class SyncLeaseManager
                 'generation' => 0,
                 'lease_expires_at' => null,
                 'heartbeat_at' => null,
+                'cancel_requested_at' => null,
+                'cancel_requested_by' => null,
             ]);
         } catch (QueryException) {
             return SyncActiveScope::query()->withoutTenantIsolation()
@@ -44,6 +46,58 @@ class SyncLeaseManager
                 ->where('scope_key', $run->scope_key)
                 ->firstOrFail();
         }
+    }
+
+    /**
+     * Reserve exclusive scope ownership for a newly queued run (prevents dual queue).
+     * Clears any leftover cancellation from a prior owner.
+     *
+     * @return array{owner: string, generation: int}
+     */
+    public function reserveForQueuedRun(SyncRun $run): array
+    {
+        $owner = 'reserved-'.Str::lower(Str::random(12));
+        $ttl = max(60, (int) config('sync.lease_ttl_seconds', 300));
+        $now = CarbonImmutable::now();
+
+        return DB::transaction(function () use ($run, $owner, $ttl, $now) {
+            $scope = SyncActiveScope::query()->withoutTenantIsolation()
+                ->where('data_source_id', $run->data_source_id)
+                ->where('entity_type', $run->entity_type)
+                ->where('scope_key', $run->scope_key)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $busy = $scope->sync_run_id !== null
+                && $scope->lease_expires_at !== null
+                && $scope->lease_expires_at->gt($now);
+
+            if ($busy && (int) $scope->sync_run_id !== (int) $run->id) {
+                throw new DomainException(SyncErrorCode::ActiveRunConflict->value);
+            }
+
+            $generation = ((int) $scope->generation) + 1;
+
+            // Ownership transfer: clear prior cancellation so it cannot poison this run.
+            $scope->forceFill([
+                'sync_run_id' => $run->id,
+                'lease_owner' => $owner,
+                'generation' => $generation,
+                'lease_expires_at' => $now->addSeconds($ttl),
+                'heartbeat_at' => $now,
+                'cancel_requested_at' => null,
+                'cancel_requested_by' => null,
+            ])->save();
+
+            $run->forceFill([
+                'lease_owner' => $owner,
+                'generation' => $generation,
+                'lease_expires_at' => $now->addSeconds($ttl),
+                'heartbeat_at' => $now,
+            ])->save();
+
+            return ['owner' => $owner, 'generation' => $generation];
+        });
     }
 
     /**
@@ -82,6 +136,13 @@ class SyncLeaseManager
                 throw new DomainException(SyncErrorCode::ActiveRunConflict->value);
             }
 
+            // Same-run cancel must survive re-acquire; foreign cancel must not.
+            $clearCancel = ! $ownedByThisRun;
+
+            if ($ownedByThisRun && $scope->cancel_requested_at !== null) {
+                throw new DomainException(SyncErrorCode::Cancelled->value);
+            }
+
             $generation = $ownedByThisRun
                 ? (int) $scope->generation
                 : ((int) $scope->generation) + 1;
@@ -92,6 +153,8 @@ class SyncLeaseManager
                 'generation' => $generation,
                 'lease_expires_at' => $now->addSeconds($ttl),
                 'heartbeat_at' => $now,
+                'cancel_requested_at' => $clearCancel ? null : $scope->cancel_requested_at,
+                'cancel_requested_by' => $clearCancel ? null : $scope->cancel_requested_by,
             ])->save();
 
             $run->forceFill([
@@ -111,37 +174,46 @@ class SyncLeaseManager
         $now = CarbonImmutable::now();
         $expires = $now->addSeconds($ttl);
 
-        // Load then save: MariaDB PDO rowCount for UPDATE returns "changed" rows,
-        // which is 0 when heartbeat timestamps fall in the same second as acquire.
-        $scope = SyncActiveScope::query()->withoutTenantIsolation()
-            ->where('data_source_id', $run->data_source_id)
-            ->where('entity_type', $run->entity_type)
-            ->where('scope_key', $run->scope_key)
-            ->where('sync_run_id', $run->id)
-            ->where('lease_owner', $owner)
-            ->where('generation', $generation)
-            ->where(function ($q) use ($now) {
-                $q->whereNull('lease_expires_at')->orWhere('lease_expires_at', '>', $now);
-            })
-            ->first();
+        return DB::transaction(function () use ($run, $owner, $generation, $now, $expires) {
+            $scope = SyncActiveScope::query()->withoutTenantIsolation()
+                ->where('data_source_id', $run->data_source_id)
+                ->where('entity_type', $run->entity_type)
+                ->where('scope_key', $run->scope_key)
+                ->where('sync_run_id', $run->id)
+                ->where('lease_owner', $owner)
+                ->where('generation', $generation)
+                ->lockForUpdate()
+                ->first();
 
-        if ($scope === null) {
-            return false;
-        }
+            if ($scope === null) {
+                return false;
+            }
 
-        $scope->forceFill([
-            'lease_expires_at' => $expires,
-            'heartbeat_at' => $now,
-        ])->save();
+            if ($scope->lease_expires_at !== null && $scope->lease_expires_at->lte($now)) {
+                return false;
+            }
 
-        $run->forceFill([
-            'lease_expires_at' => $expires,
-            'heartbeat_at' => $now,
-        ])->save();
+            if ($scope->cancel_requested_at !== null) {
+                return false;
+            }
 
-        return true;
+            $scope->forceFill([
+                'lease_expires_at' => $expires,
+                'heartbeat_at' => $now,
+            ])->save();
+
+            $run->forceFill([
+                'lease_expires_at' => $expires,
+                'heartbeat_at' => $now,
+            ])->save();
+
+            return true;
+        });
     }
 
+    /**
+     * Non-locking ownership check (pre-flight). Prefer assertOwnershipLocked inside commits.
+     */
     public function assertOwnership(SyncRun $run, string $owner, int $generation): void
     {
         $scope = SyncActiveScope::query()->withoutTenantIsolation()
@@ -150,22 +222,25 @@ class SyncLeaseManager
             ->where('scope_key', $run->scope_key)
             ->first();
 
-        $now = CarbonImmutable::now();
+        $this->validateScopeOwnership($scope, $run, $owner, $generation);
+    }
 
-        if (
-            $scope === null
-            || $scope->sync_run_id !== $run->id
-            || $scope->lease_owner !== $owner
-            || (int) $scope->generation !== $generation
-            || $scope->lease_expires_at === null
-            || $scope->lease_expires_at->lte($now)
-        ) {
-            throw new DomainException(SyncErrorCode::LeaseLost->value);
-        }
+    /**
+     * Final fencing validation with row lock. Call inside the page-commit transaction.
+     * Lock order: sync_active_scopes → data_sources → sync_checkpoints → ingestion_*.
+     */
+    public function assertOwnershipLocked(SyncRun $run, string $owner, int $generation): SyncActiveScope
+    {
+        $scope = SyncActiveScope::query()->withoutTenantIsolation()
+            ->where('data_source_id', $run->data_source_id)
+            ->where('entity_type', $run->entity_type)
+            ->where('scope_key', $run->scope_key)
+            ->lockForUpdate()
+            ->first();
 
-        if ($scope->cancel_requested_at !== null) {
-            throw new DomainException(SyncErrorCode::Cancelled->value);
-        }
+        $this->validateScopeOwnership($scope, $run, $owner, $generation);
+
+        return $scope;
     }
 
     public function release(SyncRun $run, string $owner, int $generation): void
@@ -182,26 +257,42 @@ class SyncLeaseManager
                 'lease_owner' => null,
                 'lease_expires_at' => null,
                 'heartbeat_at' => null,
+                // Clear cancellation with ownership so it cannot poison the next run.
+                'cancel_requested_at' => null,
+                'cancel_requested_by' => null,
                 'updated_at' => now(),
             ]);
     }
 
     public function requestCancel(SyncRun $run, int $userId): void
     {
-        SyncActiveScope::query()->withoutTenantIsolation()
-            ->where('data_source_id', $run->data_source_id)
-            ->where('entity_type', $run->entity_type)
-            ->where('scope_key', $run->scope_key)
-            ->where('sync_run_id', $run->id)
-            ->update([
-                'cancel_requested_at' => now(),
-                'cancel_requested_by' => $userId,
-                'updated_at' => now(),
-            ]);
+        DB::transaction(function () use ($run, $userId) {
+            $scope = SyncActiveScope::query()->withoutTenantIsolation()
+                ->where('data_source_id', $run->data_source_id)
+                ->where('entity_type', $run->entity_type)
+                ->where('scope_key', $run->scope_key)
+                ->where('sync_run_id', $run->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($scope === null) {
+                return;
+            }
+
+            // Never clear an existing cancel for the same active run; only set if absent or refresh timestamp.
+            $scope->forceFill([
+                'cancel_requested_at' => $scope->cancel_requested_at ?? now(),
+                'cancel_requested_by' => $scope->cancel_requested_by ?? $userId,
+            ])->save();
+        });
     }
 
     public function isCancelRequested(SyncRun $run): bool
     {
+        if ($run->cancelled_at !== null) {
+            return true;
+        }
+
         $scope = SyncActiveScope::query()->withoutTenantIsolation()
             ->where('data_source_id', $run->data_source_id)
             ->where('entity_type', $run->entity_type)
@@ -209,7 +300,7 @@ class SyncLeaseManager
             ->where('sync_run_id', $run->id)
             ->first();
 
-        return $scope?->cancel_requested_at !== null || $run->cancelled_at !== null;
+        return $scope?->cancel_requested_at !== null;
     }
 
     /**
@@ -227,5 +318,25 @@ class SyncLeaseManager
             ]);
 
         $run->forceFill(['lease_expires_at' => $past])->save();
+    }
+
+    private function validateScopeOwnership(?SyncActiveScope $scope, SyncRun $run, string $owner, int $generation): void
+    {
+        $now = CarbonImmutable::now();
+
+        if (
+            $scope === null
+            || $scope->sync_run_id !== $run->id
+            || $scope->lease_owner !== $owner
+            || (int) $scope->generation !== $generation
+            || $scope->lease_expires_at === null
+            || $scope->lease_expires_at->lte($now)
+        ) {
+            throw new DomainException(SyncErrorCode::LeaseLost->value);
+        }
+
+        if ($scope->cancel_requested_at !== null) {
+            throw new DomainException(SyncErrorCode::Cancelled->value);
+        }
     }
 }

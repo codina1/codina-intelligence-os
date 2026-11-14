@@ -102,12 +102,16 @@ class SyncRunner
 
                 $this->leases->assertOwnership($run, $owner, $generation);
 
+                $fetchOptions = $run->options_json ?? [];
+                // Internal watermark filter (not a public option); never confuse with page cursor.
+                $fetchOptions['watermark_since'] = $this->checkpoints->committedSince($checkpoint);
+
                 $page = $this->pages->fetchPage(
                     $source,
                     $run->entity_type,
                     $run->sync_type,
                     $cursor,
-                    $run->options_json ?? [],
+                    $fetchOptions,
                 );
 
                 if ($page->sourceMode !== 'mock') {
@@ -149,10 +153,8 @@ class SyncRunner
                     &$totals,
                     &$pagesCompleted,
                 ) {
-                    $this->leases->assertOwnership($run, $owner, $generation);
-                    if ($this->leases->isCancelRequested($run)) {
-                        throw new DomainException(SyncErrorCode::Cancelled->value);
-                    }
+                    // Final fencing inside the commit txn (lock order: scope → source → checkpoint → ingestion).
+                    $this->leases->assertOwnershipLocked($run, $owner, $generation);
 
                     $freshSource = DataSource::query()->withoutTenantIsolation()->lockForUpdate()->findOrFail($source->id);
                     if ($freshSource->status === DataSourceStatus::Disabled) {
@@ -180,11 +182,13 @@ class SyncRunner
                         $totals['rejected'] += $result['rejected'];
                         $totals['duplicate_in_batch'] += $result['duplicate_in_batch'];
                     }
-                    // already_committed: same run/page replay after a crash window — counters stay as-is.
+                    // already_committed: same run/page replay — do not double-count totals or page counters.
 
-                    $advanceWatermark = $run->sync_type === SyncType::Incremental && ! $page->hasMore;
+                    $advanceWatermark = $run->sync_type === SyncType::Incremental
+                        && ! $page->hasMore
+                        && $page->streamHighWater !== null;
                     $watermark = $advanceWatermark ? [
-                        'cursor' => $page->cursorAfter,
+                        'since' => $page->streamHighWater,
                         'committed_at' => now()->toIso8601String(),
                         'simulated' => true,
                     ] : null;
@@ -198,7 +202,7 @@ class SyncRunner
                         $advanceWatermark,
                     );
 
-                    $pagesCompleted++;
+                    $pagesCompleted = max($pagesCompleted, $pageNumber);
 
                     $run->forceFill([
                         'rows_received' => $totals['received'],

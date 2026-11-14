@@ -8,6 +8,7 @@ use App\Synchronization\DTOs\SyncCursor;
 use App\Synchronization\DTOs\SyncPage;
 use App\Synchronization\Enums\SyncErrorCode;
 use App\Synchronization\Enums\SyncType;
+use App\Synchronization\Validators\SyncOptionsValidator;
 use RuntimeException;
 
 /**
@@ -15,7 +16,10 @@ use RuntimeException;
  */
 class SyncPageAdapter
 {
-    public function __construct(private readonly ConnectorRegistry $connectors) {}
+    public function __construct(
+        private readonly ConnectorRegistry $connectors,
+        private readonly SyncOptionsValidator $optionsValidator,
+    ) {}
 
     public function fetchPage(
         DataSource $source,
@@ -50,7 +54,10 @@ class SyncPageAdapter
         $scenario = (string) ($options['scenario'] ?? $settings['fixture_dataset'] ?? 'success');
         $errorScenario = (string) ($options['error_scenario'] ?? $settings['simulated_error_scenario'] ?? 'none');
 
-        // Engine-level injected failures for test fixtures.
+        if (! $this->optionsValidator->isSafeFixtureName($scenario)) {
+            return new SyncPage([], $cursor->toArray(), null, false, 'mock', SyncErrorCode::InvalidConfiguration->value, 'Unsafe fixture scenario.');
+        }
+
         if ($errorScenario === 'timeout_page_2' && $page >= 2) {
             return new SyncPage([], $cursor->toArray(), null, false, 'mock', SyncErrorCode::Timeout->value, 'Mock timeout on page 2.', 2);
         }
@@ -60,8 +67,8 @@ class SyncPageAdapter
         if ($errorScenario === 'cursor_loop') {
             return new SyncPage(
                 records: $this->loadSyncFixture($source->provider, 'paginated_25', $page, $perPage)['slice'],
-                cursorBefore: $cursor->toArray(),
-                cursorAfter: ['page' => $page], // intentionally does not advance
+                cursorBefore: ['page' => $page],
+                cursorAfter: ['page' => $page],
                 hasMore: true,
                 sourceMode: 'mock',
             );
@@ -86,10 +93,13 @@ class SyncPageAdapter
         array $settings,
     ): SyncPage {
         $dataset = (string) ($options['incremental_dataset'] ?? $settings['incremental_dataset'] ?? 'incremental');
-        $path = database_path('fixtures/sync/'.$source->provider.'/'.$dataset.'.json');
+        if (! $this->optionsValidator->isSafeFixtureName($dataset)) {
+            return new SyncPage([], $cursor->toArray(), null, false, 'mock', SyncErrorCode::InvalidConfiguration->value, 'Unsafe incremental dataset.');
+        }
 
-        if (! is_file($path)) {
-            // Fallback: empty incremental change set (explicit, not "next page of full").
+        try {
+            $path = $this->optionsValidator->resolveFixturePath($source->provider, $dataset);
+        } catch (\Throwable) {
             return new SyncPage([], $cursor->toArray(), null, false, 'mock');
         }
 
@@ -106,7 +116,12 @@ class SyncPageAdapter
             );
         }
 
-        $since = $cursor->payload['watermark'] ?? ($decoded['initial_watermark'] ?? null);
+        // Watermark filter is separate from pagination cursor.
+        $since = $options['watermark_since'] ?? null;
+        if ($since === null) {
+            $since = $decoded['initial_watermark'] ?? null;
+        }
+
         $changes = array_values(array_filter($decoded['changes'], function ($change) use ($since) {
             if (! is_array($change)) {
                 return false;
@@ -121,19 +136,23 @@ class SyncPageAdapter
         $records = array_map(fn ($c) => is_array($c['record'] ?? null) ? $c['record'] : $c, $slice);
         $total = count($changes);
         $hasMore = ($page * $perPage) < $total;
-        $cursorAfter = $hasMore
-            ? ['page' => $page + 1, 'watermark' => $since]
-            : [
-                'page' => $page,
-                'watermark' => $decoded['final_watermark'] ?? ($slice[array_key_last($slice)]['changed_at'] ?? $since),
-            ];
+
+        // Pagination cursor only — never embed watermark in page cursor.
+        $cursorAfter = $hasMore ? ['page' => $page + 1] : ['page' => $page];
+        $highWater = null;
+        if (! $hasMore) {
+            $highWater = isset($decoded['final_watermark'])
+                ? (string) $decoded['final_watermark']
+                : (string) ($slice[array_key_last($slice)]['changed_at'] ?? $since);
+        }
 
         return new SyncPage(
             records: array_values($records),
-            cursorBefore: $cursor->toArray(),
+            cursorBefore: ['page' => $page],
             cursorAfter: $cursorAfter,
             hasMore: $hasMore,
             sourceMode: 'mock',
+            streamHighWater: $highWater,
         );
     }
 
@@ -147,11 +166,11 @@ class SyncPageAdapter
         $syncFixture = $this->maybeLoadSyncFixture($source->provider, $scenario, $page, $perPage);
         if ($syncFixture !== null) {
             $hasMore = $syncFixture['has_more'];
-            $cursorAfter = $hasMore ? ['page' => $page + 1] : null;
+            $cursorAfter = $hasMore ? ['page' => $page + 1] : ['page' => $page];
 
             return new SyncPage(
                 records: $syncFixture['slice'],
-                cursorBefore: $cursor->toArray(),
+                cursorBefore: ['page' => $page],
                 cursorAfter: $cursorAfter,
                 hasMore: $hasMore,
                 sourceMode: 'mock',
@@ -170,7 +189,7 @@ class SyncPageAdapter
 
             return new SyncPage(
                 records: [],
-                cursorBefore: $cursor->toArray(),
+                cursorBefore: ['page' => $page],
                 cursorAfter: null,
                 hasMore: false,
                 sourceMode: 'mock',
@@ -183,7 +202,7 @@ class SyncPageAdapter
         if (! isset($raw['data']) || ! is_array($raw['data']) || ! isset($raw['meta']) || ! is_array($raw['meta'])) {
             return new SyncPage(
                 [],
-                $cursor->toArray(),
+                ['page' => $page],
                 null,
                 false,
                 'mock',
@@ -196,7 +215,7 @@ class SyncPageAdapter
         if (! isset($meta['page'], $meta['per_page'], $meta['total'])) {
             return new SyncPage(
                 [],
-                $cursor->toArray(),
+                ['page' => $page],
                 null,
                 false,
                 'mock',
@@ -207,15 +226,14 @@ class SyncPageAdapter
 
         $total = (int) $meta['total'];
         $hasMore = ($page * $perPage) < $total;
-        // Do not infer completeness from a single empty page unless total is known as 0.
         if ($total === 0) {
             $hasMore = false;
         }
 
         return new SyncPage(
             records: array_values($raw['data']),
-            cursorBefore: $cursor->toArray(),
-            cursorAfter: $hasMore ? ['page' => $page + 1] : null,
+            cursorBefore: ['page' => $page],
+            cursorAfter: $hasMore ? ['page' => $page + 1] : ['page' => $page],
             hasMore: $hasMore,
             sourceMode: 'mock',
         );
@@ -226,8 +244,13 @@ class SyncPageAdapter
      */
     private function maybeLoadSyncFixture(string $provider, string $scenario, int $page, int $perPage): ?array
     {
-        $path = database_path('fixtures/sync/'.$provider.'/'.$scenario.'.json');
-        if (! is_file($path)) {
+        if (! $this->optionsValidator->isSafeFixtureName($provider) || ! $this->optionsValidator->isSafeFixtureName($scenario)) {
+            return null;
+        }
+
+        try {
+            $this->optionsValidator->resolveFixturePath($provider, $scenario);
+        } catch (\Throwable) {
             return null;
         }
 
@@ -239,7 +262,7 @@ class SyncPageAdapter
      */
     private function loadSyncFixture(string $provider, string $scenario, int $page, int $perPage): array
     {
-        $path = database_path('fixtures/sync/'.$provider.'/'.$scenario.'.json');
+        $path = $this->optionsValidator->resolveFixturePath($provider, $scenario);
         $decoded = json_decode((string) file_get_contents($path), true);
         if (! is_array($decoded) || ! array_is_list($decoded)) {
             throw new RuntimeException("Invalid sync fixture: {$path}");

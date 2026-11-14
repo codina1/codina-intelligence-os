@@ -25,6 +25,7 @@ class ProviderRegistry
                     'invalid_payload',
                     'paginated_25',
                     'incremental',
+                    'incremental_multipage',
                     'missing_external_id',
                     'invalid_schema',
                     'duplicate_ids',
@@ -102,6 +103,7 @@ class ProviderRegistry
                     'invalid_payload',
                     'paginated_25',
                     'incremental',
+                    'incremental_multipage',
                     'missing_external_id',
                     'invalid_schema',
                     'duplicate_ids',
@@ -136,7 +138,7 @@ class ProviderRegistry
             'incremental_dataset' => [
                 'type' => 'string',
                 'required' => false,
-                'enum' => ['incremental'],
+                'enum' => ['incremental', 'incremental_multipage'],
                 'description' => 'Mock incremental change-stream fixture name',
             ],
             'reporting_timezone' => [

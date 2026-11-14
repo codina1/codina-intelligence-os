@@ -18,6 +18,8 @@ final class SyncPage
         public readonly ?string $errorCode = null,
         public readonly ?string $errorMessage = null,
         public readonly ?int $retryAfterSeconds = null,
+        /** Change-stream high-water mark (incremental only); never a pagination cursor. */
+        public readonly ?string $streamHighWater = null,
     ) {}
 
     public function isError(): bool
