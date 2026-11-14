@@ -29,7 +29,8 @@ Base reviewed HEAD: `d292f0f19b82853b5838944559379c4c56a5eb76`
 ## CI
 
 Workflow: `.github/workflows/phpunit.yml`  
-URL / result: recorded after push (may be `NOT VERIFIED` until Actions finishes).
+PR run: https://github.com/codina1/codina-intelligence-os/actions/runs/43569314783 — **success**  
+Push run: https://github.com/codina1/codina-intelligence-os/actions/runs/43569313889 — **success**
 
 ## Remaining risks
 
