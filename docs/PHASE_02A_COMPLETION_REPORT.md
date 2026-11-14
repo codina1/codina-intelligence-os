@@ -4,7 +4,7 @@
 **Phase:** 02A — Data Source Registry & Connector Configuration  
 **Branch:** `cursor/phase-02a-data-source-registry`  
 **Base commit SHA:** `24a63537b7b15d6445c0215c7d25e5d45cfb9554`  
-**HEAD commit SHA:** _(filled after final push)_  
+**HEAD commit SHA:** `d44f1e7ba00063859c302988391d53e19c4c5d00`  
 **Mode:** MOCK ONLY — not Production ready
 
 ## 1. Summary
