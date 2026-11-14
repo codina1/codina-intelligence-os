@@ -1,8 +1,16 @@
 # Phase 02C Remediation Report
 
-**Status:** `PHASE_02C_READY_FOR_RE_REVIEW` (pending CI stamp on final HEAD)  
-**Reviewed base:** `18a6f45ce4e0a0e58bb660a99ead63d10ff15f6d`  
-**PR:** https://github.com/codina1/codina-intelligence-os/pull/4
+**Status:** `PHASE_02C_READY_FOR_RE_REVIEW`
+
+| Item | Value |
+| --- | --- |
+| Reviewed base | `18a6f45ce4e0a0e58bb660a99ead63d10ff15f6d` |
+| Remediation tip | `6cd36321612c14e1eac1f65a73d096bdd6363348` |
+| PR | https://github.com/codina1/codina-intelligence-os/pull/4 |
+| CI (push, tip) | https://github.com/codina1/codina-intelligence-os/actions/runs/43590582826 |
+| CI (PR, tip) | https://github.com/codina1/codina-intelligence-os/actions/runs/43590587191 |
+| CI result | **success** — 2 checks, 0 failures |
+| Mode | Mock only — not Production |
 
 ## Root causes
 
@@ -31,7 +39,7 @@
 
 Limitation documented: mutable staging upserts mean a partial overwrite cannot be rolled back to the prior completed payload without inventing history.
 
-## Tests (local)
+## Tests
 
 | Suite | Result |
 | --- | --- |
@@ -39,6 +47,7 @@ Limitation documented: mutable staging upserts mean a partial overwrite cannot b
 | Critical `--fail-on-skipped` | **81 passed** |
 | Full PHPUnit | **150 passed** / 0 skipped |
 | Two-connection MariaDB fencing | `NormalizationConcurrencyTest` |
+| CI on tip `6cd3632` | success (push + PR) |
 
 ## Risks / residual
 
@@ -48,3 +57,5 @@ Limitation documented: mutable staging upserts mean a partial overwrite cannot b
 ## Boundaries
 
 Mock only. No Production/external HTTP/Phase 03/auto-merge.
+
+PHASE_02C_READY_FOR_RE_REVIEW
