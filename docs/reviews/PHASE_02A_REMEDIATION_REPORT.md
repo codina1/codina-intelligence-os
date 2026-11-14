@@ -3,7 +3,7 @@
 **PR:** https://github.com/codina1/codina-intelligence-os/pull/2  
 **Branch:** `cursor/phase-02a-data-source-registry`  
 **Reviewed base HEAD:** `c4a52b53242ffb1e4f405f85e883877ddedaf756`  
-**Remediation HEAD:** _(filled after push)_  
+**Remediation HEAD:** `302150fa661326c0b51f600fbcc8c243fe53dbbd`  
 **Mode:** MOCK ONLY — not Production
 
 ## 1. Root causes
