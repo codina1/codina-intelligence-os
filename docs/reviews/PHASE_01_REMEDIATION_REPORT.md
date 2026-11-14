@@ -3,7 +3,7 @@
 ## 1. Exact commit SHA
 
 Base (reviewed): `b035db4dfdf4e0f9f7c6a26b32422bbcad8d3863`  
-Remediation commit: _(filled after push — see git log on `cursor/phase-01-foundation-1747`)_
+Remediation commit: `7c13e84b4aa3ccce51faf7af9204ed057de52406`
 
 ## 2. Root cause of each issue
 
