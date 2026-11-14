@@ -1,0 +1,113 @@
+name: Phase 01 PHPUnit
+
+on:
+  push:
+    branches: [main, 'cursor/**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: phpunit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: PHPUnit (MariaDB)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: codina_ios_test
+          MYSQL_USER: codina
+          MYSQL_PASSWORD: codina_ci_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:paVZEKu+SSSYHwgd+crzU25ydvmVpreBAvZkqkuRh7I=
+      APP_DEBUG: "false"
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: codina_ios_test
+      DB_USERNAME: codina
+      DB_PASSWORD: codina_ci_only
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      CODINA_ALLOW_EXTERNAL_HTTP: "false"
+      CODINA_SCHEMA_VERSION: "1.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, curl, mysql, pcntl, bcmath, intl, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Wait for MariaDB
+        run: |
+          for i in $(seq 1 30); do
+            php -r 'new PDO("mysql:host=127.0.0.1;port=3306;dbname=codina_ios_test","codina","codina_ci_only");' && exit 0
+            sleep 2
+          done
+          echo "MariaDB not ready" >&2
+          exit 1
+
+      - name: Run migrations on isolated CI database
+        run: php artisan migrate --force --no-interaction
+
+      - name: Critical security & concurrency suite (fail on skipped)
+        run: |
+          echo "::group::Critical tests"
+          ./vendor/bin/phpunit --colors=never --fail-on-skipped --group critical
+          echo "::endgroup::"
+
+      - name: Full PHPUnit suite
+        run: |
+          echo "::group::Full suite"
+          ./vendor/bin/phpunit --colors=never --display-skipped --log-junit junit.xml
+          echo "::endgroup::"
+
+      - name: Summarize concurrency and security results
+        if: always()
+        run: |
+          echo "## Phase 01 CI results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Critical group (security/concurrency): see job logs" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Full suite JUnit: junit.xml artifact" >> "$GITHUB_STEP_SUMMARY"
+          echo "- External HTTP: CODINA_ALLOW_EXTERNAL_HTTP=false" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production credentials: none" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f junit.xml ]; then
+            php -r '
+              $x = simplexml_load_file("junit.xml");
+              $tests = (int)$x["tests"]; $failures=(int)$x["failures"]; $errors=(int)$x["errors"]; $skipped=(int)$x["skipped"];
+              echo "Tests=$tests Failures=$failures Errors=$errors Skipped=$skipped\n";
+              file_put_contents(getenv("GITHUB_STEP_SUMMARY"), "- Totals: tests=$tests failures=$failures errors=$errors skipped=$skipped\n", FILE_APPEND);
+            '
+          fi
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-junit
+          path: junit.xml

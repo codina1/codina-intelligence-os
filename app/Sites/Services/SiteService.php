@@ -62,15 +62,10 @@ class SiteService
             );
         }
 
+        // Membership-scoped lookup only — never probe global existence (prevents enumeration).
         $site = $this->membershipScopedQuery($user)->whereKey($siteId)->first();
 
         if ($site === null) {
-            // Distinguish unknown vs unauthorized without leaking foreign existence when possible.
-            $existsAnywhere = Site::query()->withoutTenantIsolation()->whereKey($siteId)->exists();
-            if ($existsAnywhere) {
-                throw new AccessDeniedHttpException('Cross-tenant access denied.');
-            }
-
             throw new NotFoundHttpException('Site not found.');
         }
 

@@ -8,9 +8,11 @@ use App\Models\Site;
 use App\Shared\Support\IdempotencyGuard;
 use App\Synchronization\Jobs\TenantAwareJob;
 use App\Tenancy\Services\TenantContext;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 class QueueAuditIdempotencyTest extends TestCase
@@ -74,6 +76,7 @@ class QueueAuditIdempotencyTest extends TestCase
         $this->assertSame('[redacted]', $payload['password']);
     }
 
+    #[Group('critical')]
     public function test_idempotent_request_handling(): void
     {
         [$user, $tenant] = $this->makeTenantUser('tenant_owner');
@@ -101,6 +104,7 @@ class QueueAuditIdempotencyTest extends TestCase
         $this->assertSame(1, IdempotencyKey::query()->where('key', 'idem-1')->count());
     }
 
+    #[Group('critical')]
     public function test_idempotency_conflict_on_payload_mismatch(): void
     {
         [$user, $tenant] = $this->makeTenantUser('tenant_owner');
@@ -125,6 +129,87 @@ class QueueAuditIdempotencyTest extends TestCase
             ])
             ->assertStatus(409)
             ->assertJsonPath('error.code', 'idempotency_conflict');
+    }
+
+    #[Group('critical')]
+    public function test_idempotency_rolls_back_and_allows_retry_without_deleting_claim(): void
+    {
+        [$user, $tenant] = $this->makeTenantUser('tenant_owner');
+        $guard = app(IdempotencyGuard::class);
+
+        $payload = json_encode([
+            'tenant_id' => $tenant->id,
+            'name' => 'Rollback Site',
+            'primary_url' => 'https://rollback.example.test',
+        ], JSON_THROW_ON_ERROR);
+
+        $request = Request::create('/api/v1/sites', 'POST', [], [], [], [], $payload);
+        $request->headers->set('Idempotency-Key', 'idem-rollback');
+        $request->headers->set('Content-Type', 'application/json');
+        $request->attributes->set('tenant_id', $tenant->id);
+
+        try {
+            $guard->handle($request, $user, function () {
+                Site::factory()->create(['name' => 'Should Roll Back']);
+                throw new \RuntimeException('simulated failure after local write began');
+            });
+            $this->fail('Expected simulated failure.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('simulated failure after local write began', $e->getMessage());
+        }
+
+        $claim = IdempotencyKey::query()->where('key', 'idem-rollback')->first();
+        $this->assertNotNull($claim);
+        $this->assertSame(IdempotencyGuard::STATUS_RETRYABLE, $claim->status);
+        $this->assertSame(0, Site::query()->withoutTenantIsolation()->where('name', 'Should Roll Back')->count());
+
+        $retry = $guard->handle($request, $user, function () use ($tenant) {
+            $site = Site::factory()->create([
+                'tenant_id' => $tenant->id,
+                'name' => 'Retry Site',
+            ]);
+
+            return response()->json([
+                'data' => ['id' => $site->id, 'name' => $site->name],
+                'meta' => ['request_id' => 'retry', 'schema_version' => '1.0'],
+            ], 201);
+        });
+
+        $this->assertSame(201, $retry->getStatusCode());
+        $claim->refresh();
+        $this->assertSame(IdempotencyGuard::STATUS_COMPLETED, $claim->status);
+        $this->assertSame(1, Site::query()->withoutTenantIsolation()->where('name', 'Retry Site')->count());
+        $this->assertSame(1, IdempotencyKey::query()->where('key', 'idem-rollback')->count());
+    }
+
+    #[Group('critical')]
+    public function test_terminal_failed_idempotency_rejects_retry(): void
+    {
+        [$user, $tenant] = $this->makeTenantUser('tenant_owner');
+        $guard = app(IdempotencyGuard::class);
+
+        $payload = json_encode(['tenant_id' => $tenant->id], JSON_THROW_ON_ERROR);
+        $request = Request::create('/api/v1/sites', 'POST', [], [], [], [], $payload);
+        $request->headers->set('Idempotency-Key', 'idem-failed');
+        $request->attributes->set('tenant_id', $tenant->id);
+
+        $claim = IdempotencyKey::query()->create([
+            'tenant_id' => $tenant->id,
+            'tenant_scope_id' => $tenant->id,
+            'user_id' => $user->id,
+            'key' => 'idem-failed',
+            'route' => 'POST api/v1/sites',
+            'request_hash' => hash('sha256', $payload),
+            'status' => IdempotencyGuard::STATUS_PENDING,
+        ]);
+        $guard->markFailed($claim, 'External side effect may have occurred.');
+
+        $response = $guard->handle($request, $user, function () {
+            $this->fail('Callback must not run for terminal failed keys.');
+        });
+
+        $this->assertSame(409, $response->getStatusCode());
+        $this->assertSame('idempotency_failed', $response->getData(true)['error']['code']);
     }
 
     public function test_nullable_tenant_scope_uniqueness_is_enforced(): void

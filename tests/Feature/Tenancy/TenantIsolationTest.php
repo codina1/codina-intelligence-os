@@ -7,6 +7,7 @@ use App\Models\Tenant;
 use App\Synchronization\Jobs\TenantAwareJob;
 use App\Tenancy\Exceptions\TenantContextRequiredException;
 use App\Tenancy\Services\TenantContext;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 class TenantIsolationTest extends TestCase
@@ -42,23 +43,46 @@ class TenantIsolationTest extends TestCase
         $this->assertNotContains($siteB->id, $ids);
     }
 
+    #[Group('critical')]
     public function test_idor_prevention_on_site_show_update_delete(): void
     {
         [$userA] = $this->makeTenantUser('tenant_owner');
         [, $tenantB] = $this->makeTenantUser('tenant_owner');
         $siteB = Site::factory()->create(['tenant_id' => $tenantB->id]);
 
+        // Cross-tenant access must not enumerate existence — consistent 404.
         $this->actingAs($userA)->getJson('/api/v1/sites/'.$siteB->id)
-            ->assertStatus(403);
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'not_found');
 
         $this->actingAs($userA)->patchJsonWithCsrf('/api/v1/sites/'.$siteB->id, [
             'name' => 'Hacked',
-        ])->assertStatus(403);
+        ])->assertStatus(404);
 
         $this->actingAs($userA)->deleteJsonWithCsrf('/api/v1/sites/'.$siteB->id)
-            ->assertStatus(403);
+            ->assertStatus(404);
 
         $this->assertDatabaseHas('sites', ['id' => $siteB->id, 'name' => $siteB->name]);
+    }
+
+    #[Group('critical')]
+    public function test_foreign_and_missing_sites_are_indistinguishable(): void
+    {
+        [$userA] = $this->makeTenantUser('tenant_owner');
+        [, $tenantB] = $this->makeTenantUser('tenant_owner');
+        $foreign = Site::factory()->create(['tenant_id' => $tenantB->id]);
+        $missingId = $foreign->id + 999999;
+
+        $foreignResponse = $this->actingAs($userA)->getJson('/api/v1/sites/'.$foreign->id);
+        $missingResponse = $this->actingAs($userA)->getJson('/api/v1/sites/'.$missingId);
+
+        $foreignResponse->assertStatus(404)->assertJsonPath('error.code', 'not_found');
+        $missingResponse->assertStatus(404)->assertJsonPath('error.code', 'not_found');
+        $this->assertSame(
+            $foreignResponse->json('error.message'),
+            $missingResponse->json('error.message')
+        );
+        $this->assertSame('Site not found.', $foreignResponse->json('error.message'));
     }
 
     public function test_cross_tenant_fk_protection_on_create(): void

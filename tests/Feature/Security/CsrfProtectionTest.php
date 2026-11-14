@@ -4,8 +4,10 @@ namespace Tests\Feature\Security;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
+#[Group('critical')]
 class CsrfProtectionTest extends TestCase
 {
     public function test_csrf_cookie_endpoint_issues_session(): void

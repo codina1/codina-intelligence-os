@@ -11,11 +11,29 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
+/**
+ * Atomic idempotency for Phase 01 local/database operations.
+ *
+ * Durable statuses:
+ * - pending: claim held; work in progress
+ * - completed: success; identical payload replays stored response
+ * - retryable: DB-local attempt failed and rolled back; same key+hash may retry
+ * - failed: terminal ambiguous failure; client must use a new key
+ *
+ * Limitation: callbacks with external side effects (HTTP, queues that already
+ * published, non-transactional stores) are NOT safe to mark retryable after an
+ * exception. Phase 01 site create is DB-local and runs inside a transaction.
+ * Future phases must register compensating actions or mark failures as `failed`.
+ */
 class IdempotencyGuard
 {
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_COMPLETED = 'completed';
+
+    public const STATUS_RETRYABLE = 'retryable';
+
+    public const STATUS_FAILED = 'failed';
 
     public function handle(Request $request, User $user, callable $callback): JsonResponse
     {
@@ -33,25 +51,63 @@ class IdempotencyGuard
         $claimed = $this->tryClaim($tenantId, $tenantScopeId, $user->id, $key, $route, $hash);
 
         if ($claimed === null) {
+            $reclaimed = $this->tryReclaimForRetry($tenantScopeId, $user->id, $key, $route, $hash);
+            if ($reclaimed !== null) {
+                return $this->executeClaim($reclaimed, $callback);
+            }
+
             return $this->replayOrConflict($tenantScopeId, $user->id, $key, $route, $hash);
         }
 
+        return $this->executeClaim($claimed, $callback);
+    }
+
+    private function executeClaim(IdempotencyKey $claimed, callable $callback): JsonResponse
+    {
         try {
             /** @var JsonResponse $response */
-            $response = $callback();
+            $response = DB::transaction(function () use ($callback, $claimed) {
+                $response = $callback();
 
-            $claimed->forceFill([
-                'status' => self::STATUS_COMPLETED,
-                'response_code' => $response->getStatusCode(),
-                'response_body' => $response->getData(true),
-                'expires_at' => CarbonImmutable::now()->addDay(),
-            ])->save();
+                $claimed->forceFill([
+                    'status' => self::STATUS_COMPLETED,
+                    'response_code' => $response->getStatusCode(),
+                    'response_body' => $response->getData(true),
+                    'expires_at' => CarbonImmutable::now()->addDay(),
+                ])->save();
+
+                return $response;
+            });
 
             return $response;
         } catch (Throwable $e) {
-            $claimed->delete();
+            // Never delete the claim after an ambiguous point. Local DB work was
+            // rolled back by the transaction above, so Phase 01 marks retryable.
+            $this->markRetryable($claimed, $e);
             throw $e;
         }
+    }
+
+    private function markRetryable(IdempotencyKey $claimed, Throwable $e): void
+    {
+        $claimed->refresh();
+
+        if ($claimed->status === self::STATUS_COMPLETED) {
+            return;
+        }
+
+        $claimed->forceFill([
+            'status' => self::STATUS_RETRYABLE,
+            'response_code' => null,
+            'response_body' => [
+                'error' => [
+                    'code' => 'retryable_failure',
+                    'message' => 'Previous attempt failed after DB rollback; retry with the same Idempotency-Key is allowed for DB-local operations.',
+                    'previous' => class_basename($e),
+                ],
+            ],
+            'expires_at' => CarbonImmutable::now()->addDay(),
+        ])->save();
     }
 
     private function tryClaim(
@@ -84,6 +140,50 @@ class IdempotencyGuard
         }
     }
 
+    private function tryReclaimForRetry(
+        int $tenantScopeId,
+        int $userId,
+        string $key,
+        string $route,
+        string $hash,
+    ): ?IdempotencyKey {
+        $existing = IdempotencyKey::query()
+            ->where('tenant_scope_id', $tenantScopeId)
+            ->where('user_id', $userId)
+            ->where('key', $key)
+            ->where('route', $route)
+            ->first();
+
+        if ($existing === null || $existing->request_hash !== $hash) {
+            return null;
+        }
+
+        $stalePending = $existing->status === self::STATUS_PENDING
+            && $existing->updated_at !== null
+            && $existing->updated_at->lt(now()->subSeconds(30));
+
+        if ($existing->status !== self::STATUS_RETRYABLE && ! $stalePending) {
+            return null;
+        }
+
+        $reclaimed = IdempotencyKey::query()
+            ->whereKey($existing->id)
+            ->where('request_hash', $hash)
+            ->whereIn('status', [self::STATUS_RETRYABLE, self::STATUS_PENDING])
+            ->update([
+                'status' => self::STATUS_PENDING,
+                'response_code' => null,
+                'response_body' => null,
+                'updated_at' => now(),
+            ]);
+
+        if ($reclaimed !== 1) {
+            return null;
+        }
+
+        return $existing->fresh();
+    }
+
     private function replayOrConflict(
         int $tenantScopeId,
         int $userId,
@@ -99,7 +199,6 @@ class IdempotencyGuard
             ->first();
 
         if ($existing === null) {
-            // Rare race: claim deleted after conflict — ask client to retry.
             return ApiResponse::error(
                 'idempotency_race',
                 'Idempotency claim raced; retry the request.',
@@ -115,15 +214,30 @@ class IdempotencyGuard
             );
         }
 
+        if ($existing->status === self::STATUS_FAILED) {
+            return ApiResponse::error(
+                'idempotency_failed',
+                'A previous attempt with this key failed terminally; use a new Idempotency-Key.',
+                409
+            );
+        }
+
         if ($existing->status === self::STATUS_PENDING) {
-            // Wait briefly for the winning claim to finish (concurrent same payload).
             for ($i = 0; $i < 20; $i++) {
                 usleep(50_000);
                 $existing->refresh();
-                if ($existing->status === self::STATUS_COMPLETED) {
+                if (in_array($existing->status, [self::STATUS_COMPLETED, self::STATUS_RETRYABLE, self::STATUS_FAILED], true)) {
                     break;
                 }
             }
+        }
+
+        if ($existing->status === self::STATUS_RETRYABLE) {
+            return ApiResponse::error(
+                'idempotency_retryable',
+                'Previous attempt is retryable; retry with the same Idempotency-Key.',
+                409
+            );
         }
 
         if ($existing->status !== self::STATUS_COMPLETED || $existing->response_body === null) {
@@ -142,7 +256,6 @@ class IdempotencyGuard
         $sqlState = $e->errorInfo[0] ?? null;
         $driverCode = (int) ($e->errorInfo[1] ?? 0);
 
-        // SQLSTATE 23000 + MySQL/MariaDB duplicate key 1062
         return $sqlState === '23000' || $driverCode === 1062 || str_contains($e->getMessage(), 'Duplicate');
     }
 
@@ -162,5 +275,23 @@ class IdempotencyGuard
 
             throw $e;
         }
+    }
+
+    /**
+     * Explicit terminal failure (for future external side-effect paths).
+     */
+    public function markFailed(IdempotencyKey $claimed, string $message): void
+    {
+        $claimed->forceFill([
+            'status' => self::STATUS_FAILED,
+            'response_code' => 409,
+            'response_body' => [
+                'error' => [
+                    'code' => 'idempotency_failed',
+                    'message' => $message,
+                ],
+            ],
+            'expires_at' => CarbonImmutable::now()->addDay(),
+        ])->save();
     }
 }

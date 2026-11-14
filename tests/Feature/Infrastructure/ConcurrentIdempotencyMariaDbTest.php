@@ -3,12 +3,14 @@
 namespace Tests\Feature\Infrastructure;
 
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
  * Uses committed MariaDB state (no wrapping transaction) so concurrent PDO
  * connections can observe rows and exercise the unique constraint for real.
  */
+#[Group('critical')]
 class ConcurrentIdempotencyMariaDbTest extends TestCase
 {
     protected function connectionsToTransact(): array
