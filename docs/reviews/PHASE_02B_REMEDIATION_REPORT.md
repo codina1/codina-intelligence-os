@@ -3,6 +3,8 @@
 **PR:** https://github.com/codina1/codina-intelligence-os/pull/3  
 **Branch:** `cursor/phase-02b-sync-engine`  
 **Reviewed base HEAD:** `2b635798437be588cbebc605a0a6b8c902169cc3`  
+**Remediation commit:** `b90dee425b7d96e6cf135d59bfd0ba602cee18ff`  
+**CI-verified tip HEAD:** `b90dee425b7d96e6cf135d59bfd0ba602cee18ff`  
 **Mode:** MOCK ONLY — `CODINA_ALLOW_EXTERNAL_HTTP=false` — not Production
 
 ## 1. Root causes
@@ -47,7 +49,12 @@
 
 ## 6. CI URL and final HEAD SHA
 
-Recorded after GitHub Actions succeeds on the remediation tip (see commit / PR checks).
+**Conclusion:** success (2 checks, 0 failures) on tip `b90dee425b7d96e6cf135d59bfd0ba602cee18ff`
+
+| Trigger | Workflow run |
+| --- | --- |
+| `push` | https://github.com/codina1/codina-intelligence-os/actions/runs/43587164283 |
+| `pull_request` | https://github.com/codina1/codina-intelligence-os/actions/runs/43587167452 |
 
 ## 7. Remaining risks
 
@@ -57,7 +64,7 @@ Recorded after GitHub Actions succeeds on the remediation tip (see commit / PR c
 
 ## 8. Final readiness assessment
 
-Remediation addresses the four review findings plus queued-run reservation and retry page bookkeeping. Local PHPUnit is green. PR #3 remains open for re-review — not merged. Phase 02C not started.
+Remediation addresses the four review findings plus queued-run reservation and retry page bookkeeping. Local + GitHub Actions are green on tip `b90dee4`. PR #3 remains open for re-review — not merged. Phase 02C not started.
 
 ## Status
 
