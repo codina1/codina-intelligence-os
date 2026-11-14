@@ -1,0 +1,343 @@
+openapi: 3.1.0
+info:
+  title: CODINA Intelligence OS API
+  version: 1.0.0
+  description: |
+    Phase 01 implemented endpoints only.
+    Authentication uses first-party session cookies after POST /api/v1/auth/login.
+servers:
+  - url: http://localhost:8000
+    description: Local development
+tags:
+  - name: Health
+  - name: Auth
+  - name: Tenants
+  - name: Sites
+  - name: MockConnectors
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Application health
+      operationId: getHealth
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Degraded
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Create session
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                remember: { type: boolean }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Destroy session
+      operationId: logout
+      security: [{ sessionAuth: [] }]
+      responses:
+        '200':
+          description: Logged out
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      operationId: me
+      security: [{ sessionAuth: [] }]
+      responses:
+        '200':
+          description: Current user
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/v1/tenants:
+    get:
+      tags: [Tenants]
+      summary: List authorized tenants
+      operationId: listTenants
+      security: [{ sessionAuth: [] }]
+      responses:
+        '200':
+          description: Tenant list
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [Tenants]
+      summary: Create tenant (platform admin)
+      operationId: createTenant
+      security: [{ sessionAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                slug: { type: string }
+                status: { type: string, enum: [active, suspended] }
+                settings: { type: object }
+      responses:
+        '201':
+          description: Created
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/tenants/{id}:
+    get:
+      tags: [Tenants]
+      summary: Show tenant
+      operationId: showTenant
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Tenant
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/sites:
+    get:
+      tags: [Sites]
+      summary: List sites for authorized tenants
+      operationId: listSites
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - name: tenant_id
+          in: query
+          schema: { type: integer }
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Paginated sites
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [Sites]
+      summary: Create site
+      operationId: createSite
+      security: [{ sessionAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, name, primary_url]
+              properties:
+                tenant_id: { type: integer }
+                name: { type: string }
+                slug: { type: string }
+                primary_url: { type: string, format: uri }
+                status: { type: string, enum: [active, inactive] }
+                settings: { type: object }
+      responses:
+        '201':
+          description: Created
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/v1/sites/{id}:
+    get:
+      tags: [Sites]
+      summary: Show site
+      operationId: showSite
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Site
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      tags: [Sites]
+      summary: Update site
+      operationId: updateSite
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Updated
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [Sites]
+      summary: Delete site
+      operationId: deleteSite
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/mock-connectors:
+    get:
+      tags: [MockConnectors]
+      summary: List mock connectors
+      operationId: listMockConnectors
+      security: [{ sessionAuth: [] }]
+      responses:
+        '200':
+          description: Connector summaries
+  /api/v1/mock-connectors/{key}:
+    get:
+      tags: [MockConnectors]
+      summary: Fetch mock connector fixture data or simulated error
+      operationId: showMockConnector
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - wordpress
+              - woocommerce
+              - google_search_console
+              - google_analytics_4
+              - tutor_lms_pro
+        - name: scenario
+          in: query
+          schema:
+            type: string
+            enum:
+              - success
+              - empty
+              - pagination
+              - invalid_payload
+              - rate_limit
+              - unauthorized
+              - temporary_failure
+              - repeated_sync
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Fixture data
+        '401':
+          description: Unauthenticated or simulated unauthorized
+        '429':
+          description: Simulated rate limit
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: laravel_session
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+  responses:
+    Unauthenticated:
+      description: Missing or invalid session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Authenticated but not authorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: Too many attempts
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    Meta:
+      type: object
+      required: [request_id, schema_version]
+      properties:
+        request_id: { type: string }
+        schema_version: { type: string, example: '1.0' }
+    HealthResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            service: { type: string }
+            phase: { type: string }
+            status: { type: string }
+            checks: { type: object }
+        meta:
+          $ref: '#/components/schemas/Meta'
+    UserEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            email: { type: string }
+            is_platform_admin: { type: boolean }
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object }
+        meta:
+          $ref: '#/components/schemas/Meta'
