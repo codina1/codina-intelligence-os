@@ -1,0 +1,152 @@
+[
+    {
+        "id": 1,
+        "source": "woocommerce",
+        "title": "Fixture item 1",
+        "status": "published"
+    },
+    {
+        "id": 2,
+        "source": "woocommerce",
+        "title": "Fixture item 2",
+        "status": "published"
+    },
+    {
+        "id": 3,
+        "source": "woocommerce",
+        "title": "Fixture item 3",
+        "status": "published"
+    },
+    {
+        "id": 4,
+        "source": "woocommerce",
+        "title": "Fixture item 4",
+        "status": "published"
+    },
+    {
+        "id": 5,
+        "source": "woocommerce",
+        "title": "Fixture item 5",
+        "status": "published"
+    },
+    {
+        "id": 6,
+        "source": "woocommerce",
+        "title": "Fixture item 6",
+        "status": "published"
+    },
+    {
+        "id": 7,
+        "source": "woocommerce",
+        "title": "Fixture item 7",
+        "status": "published"
+    },
+    {
+        "id": 8,
+        "source": "woocommerce",
+        "title": "Fixture item 8",
+        "status": "published"
+    },
+    {
+        "id": 9,
+        "source": "woocommerce",
+        "title": "Fixture item 9",
+        "status": "published"
+    },
+    {
+        "id": 10,
+        "source": "woocommerce",
+        "title": "Fixture item 10",
+        "status": "published"
+    },
+    {
+        "id": 11,
+        "source": "woocommerce",
+        "title": "Fixture item 11",
+        "status": "published"
+    },
+    {
+        "id": 12,
+        "source": "woocommerce",
+        "title": "Fixture item 12",
+        "status": "published"
+    },
+    {
+        "id": 13,
+        "source": "woocommerce",
+        "title": "Fixture item 13",
+        "status": "published"
+    },
+    {
+        "id": 14,
+        "source": "woocommerce",
+        "title": "Fixture item 14",
+        "status": "published"
+    },
+    {
+        "id": 15,
+        "source": "woocommerce",
+        "title": "Fixture item 15",
+        "status": "published"
+    },
+    {
+        "id": 16,
+        "source": "woocommerce",
+        "title": "Fixture item 16",
+        "status": "published"
+    },
+    {
+        "id": 17,
+        "source": "woocommerce",
+        "title": "Fixture item 17",
+        "status": "published"
+    },
+    {
+        "id": 18,
+        "source": "woocommerce",
+        "title": "Fixture item 18",
+        "status": "published"
+    },
+    {
+        "id": 19,
+        "source": "woocommerce",
+        "title": "Fixture item 19",
+        "status": "published"
+    },
+    {
+        "id": 20,
+        "source": "woocommerce",
+        "title": "Fixture item 20",
+        "status": "published"
+    },
+    {
+        "id": 21,
+        "source": "woocommerce",
+        "title": "Fixture item 21",
+        "status": "published"
+    },
+    {
+        "id": 22,
+        "source": "woocommerce",
+        "title": "Fixture item 22",
+        "status": "published"
+    },
+    {
+        "id": 23,
+        "source": "woocommerce",
+        "title": "Fixture item 23",
+        "status": "published"
+    },
+    {
+        "id": 24,
+        "source": "woocommerce",
+        "title": "Fixture item 24",
+        "status": "published"
+    },
+    {
+        "id": 25,
+        "source": "woocommerce",
+        "title": "Fixture item 25",
+        "status": "published"
+    }
+]
