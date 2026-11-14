@@ -9,6 +9,7 @@ use App\Models\DataSource;
 use App\Models\IngestionRecord;
 use App\Normalization\DTOs\NormalizedContent;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -38,42 +39,72 @@ class ContentProjectionService
             }
 
             if ($entity === null) {
-                $entity = ContentEntity::query()->create([
-                    'public_id' => (string) Str::uuid(),
-                    'tenant_id' => $source->tenant_id,
-                    'site_id' => $source->site_id,
-                    'data_source_id' => $source->id,
-                    'entity_type' => $normalized->entityType,
-                    'external_id' => $normalized->externalId,
-                    'external_id_hash' => $normalized->externalIdHash,
-                    'content_type' => $normalized->contentType,
-                    'title' => $normalized->title,
-                    'slug' => $normalized->slug,
-                    'canonical_url' => $normalized->canonicalUrl,
-                    'publication_status' => $normalized->publicationStatus,
-                    'normalized_status' => $normalized->normalizedStatus,
-                    'current_version_number' => 1,
-                    'normalized_payload_hash' => $normalized->payloadHash,
-                    'source_updated_at' => $normalized->sourceUpdatedAt,
-                    'first_seen_at' => $record->first_seen_at ?? $now,
-                    'last_seen_at' => $record->last_seen_at ?? $now,
-                    'normalized_at' => $now,
-                ]);
+                try {
+                    $entity = ContentEntity::query()->create([
+                        'public_id' => (string) Str::uuid(),
+                        'tenant_id' => $source->tenant_id,
+                        'site_id' => $source->site_id,
+                        'data_source_id' => $source->id,
+                        'entity_type' => $normalized->entityType,
+                        'external_id' => $normalized->externalId,
+                        'external_id_hash' => $normalized->externalIdHash,
+                        'content_type' => $normalized->contentType,
+                        'title' => $normalized->title,
+                        'slug' => $normalized->slug,
+                        'canonical_url' => $normalized->canonicalUrl,
+                        'publication_status' => $normalized->publicationStatus,
+                        'normalized_status' => $normalized->normalizedStatus,
+                        'current_version_number' => 1,
+                        'normalized_payload_hash' => $normalized->payloadHash,
+                        'source_updated_at' => $normalized->sourceUpdatedAt,
+                        'first_seen_at' => $record->first_seen_at ?? $now,
+                        'last_seen_at' => $record->last_seen_at ?? $now,
+                        'normalized_at' => $now,
+                    ]);
+                } catch (UniqueConstraintViolationException) {
+                    // Concurrent first-create: reload under lock and continue as update/unchanged.
+                    $entity = ContentEntity::query()
+                        ->where('data_source_id', $source->id)
+                        ->where('entity_type', $normalized->entityType)
+                        ->where('external_id_hash', $normalized->externalIdHash)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                }
 
-                ContentVersion::query()->create([
-                    'tenant_id' => $source->tenant_id,
-                    'content_entity_id' => $entity->id,
-                    'version_number' => 1,
-                    'normalized_payload_hash' => $normalized->payloadHash,
-                    'normalized_payload_json' => $normalized->payload,
-                    'source_ingestion_record_id' => $record->id,
-                    'mapper_version' => $normalized->mapperVersion,
-                    'created_at' => $now,
-                ]);
+                $hasVersion = ContentVersion::query()
+                    ->where('content_entity_id', $entity->id)
+                    ->exists();
 
-                $this->upsertProvenance($source, $entity, $record);
+                if (! $hasVersion) {
+                    ContentVersion::query()->create([
+                        'tenant_id' => $source->tenant_id,
+                        'content_entity_id' => $entity->id,
+                        'version_number' => 1,
+                        'normalized_payload_hash' => $normalized->payloadHash,
+                        'normalized_payload_json' => $normalized->payload,
+                        'source_ingestion_record_id' => $record->id,
+                        'mapper_version' => $normalized->mapperVersion,
+                        'created_at' => $now,
+                    ]);
 
-                return ['outcome' => 'created', 'entity' => $entity->fresh()];
+                    $entity->fill([
+                        'current_version_number' => 1,
+                        'normalized_payload_hash' => $normalized->payloadHash,
+                        'title' => $normalized->title,
+                        'slug' => $normalized->slug,
+                        'canonical_url' => $normalized->canonicalUrl,
+                        'publication_status' => $normalized->publicationStatus,
+                        'normalized_status' => $normalized->normalizedStatus,
+                        'normalized_at' => $now,
+                        'last_seen_at' => $record->last_seen_at ?? $now,
+                    ])->save();
+
+                    $this->upsertProvenance($source, $entity, $record);
+
+                    return ['outcome' => 'created', 'entity' => $entity->fresh()];
+                }
+
+                // Fell through from concurrent create — treat as existing entity below.
             }
 
             $entity->last_seen_at = $record->last_seen_at ?? $now;

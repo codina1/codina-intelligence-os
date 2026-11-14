@@ -6,13 +6,11 @@ use App\Models\DataSource;
 use App\Models\IngestionRecord;
 use App\Models\NormalizationFailure;
 use App\Models\NormalizationRun;
-use App\Models\SyncRun;
 use App\Normalization\Enums\NormalizationErrorCode;
 use App\Normalization\Enums\NormalizationRunStatus;
 use App\Normalization\Enums\NormalizationTarget;
-use App\Synchronization\Enums\SyncRunStatus;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
+use DomainException;
 use RuntimeException;
 use Throwable;
 
@@ -22,12 +20,19 @@ class NormalizationRunner
         private readonly NormalizerRegistry $registry,
         private readonly ContentProjectionService $contentProjection,
         private readonly MetricProjectionService $metricProjection,
+        private readonly StagingProvenanceGate $provenance,
+        private readonly NormalizationLeaseManager $leases,
     ) {}
 
-    public function run(NormalizationRun $run): NormalizationRun
+    /**
+     * @param  array{owner: string, generation: int}  $lease
+     */
+    public function run(NormalizationRun $run, array $lease): NormalizationRun
     {
         $run = $run->fresh();
         $source = DataSource::query()->withoutTenantIsolation()->findOrFail($run->data_source_id);
+
+        $this->leases->assertOwnershipLocked($run, $lease);
 
         $run->status = NormalizationRunStatus::Running;
         $run->started_at = CarbonImmutable::now();
@@ -45,20 +50,21 @@ class NormalizationRunner
         ];
 
         try {
-            if (! SyncRun::query()->withoutTenantIsolation()
-                ->where('tenant_id', $run->tenant_id)
-                ->where('data_source_id', $source->id)
-                ->where('status', SyncRunStatus::Completed->value)
-                ->exists()) {
+            if (! $this->provenance->hasCompletedSync((int) $run->tenant_id, (int) $source->id)) {
                 $this->failRun($run, NormalizationErrorCode::NoCommittedStaging, $counters);
+                $this->leases->release($run, $lease);
 
                 return $run->fresh();
             }
 
+            $completedRunIds = $this->provenance->completedRunIds((int) $run->tenant_id, (int) $source->id);
             $batchSize = (int) config('normalization.batch_size', 100);
             $lastId = 0;
+            $processedInBatch = 0;
 
             while (true) {
+                $this->leases->assertOwnershipLocked($run, $lease);
+
                 $records = IngestionRecord::query()
                     ->where('tenant_id', $run->tenant_id)
                     ->where('data_source_id', $source->id)
@@ -74,13 +80,23 @@ class NormalizationRunner
                 foreach ($records as $record) {
                     $lastId = (int) $record->id;
                     $counters['records_scanned']++;
-                    $this->processRecord($run, $source, $record, $counters);
+                    $this->processRecord($run, $source, $record, $completedRunIds, $counters);
+                    $processedInBatch++;
+
+                    if ($processedInBatch >= 25) {
+                        $this->leases->heartbeat($run, $lease);
+                        $processedInBatch = 0;
+                    }
                 }
+
+                $this->leases->heartbeat($run, $lease);
             }
 
             $status = $counters['records_rejected'] > 0
                 ? NormalizationRunStatus::CompletedWithErrors
                 : NormalizationRunStatus::Completed;
+
+            $this->leases->assertOwnershipLocked($run, $lease);
 
             $run->fill([
                 ...$counters,
@@ -90,7 +106,23 @@ class NormalizationRunner
             ]);
             $run->save();
 
+            $this->leases->release($run, $lease);
+
             return $run->fresh();
+        } catch (DomainException $e) {
+            if ($e->getMessage() === NormalizationErrorCode::StaleLease->value) {
+                $run->fill([
+                    ...$counters,
+                    'status' => NormalizationRunStatus::Failed,
+                    'finished_at' => CarbonImmutable::now(),
+                    'last_error_code' => NormalizationErrorCode::StaleLease->value,
+                ]);
+                $run->save();
+
+                return $run->fresh();
+            }
+
+            throw $e;
         } catch (Throwable $e) {
             $run->fill([
                 ...$counters,
@@ -99,20 +131,36 @@ class NormalizationRunner
                 'last_error_code' => NormalizationErrorCode::MapperFailure->value,
             ]);
             $run->save();
+            $this->leases->release($run, $lease);
 
             throw $e;
         }
     }
 
     /**
+     * @param  \Illuminate\Support\Collection<int, int>  $completedRunIds
      * @param  array<string, int>  $counters
      */
     private function processRecord(
         NormalizationRun $run,
         DataSource $source,
         IngestionRecord $record,
+        $completedRunIds,
         array &$counters,
     ): void {
+        $gate = $this->provenance->evaluate($record, $completedRunIds);
+        if (! $gate['ok']) {
+            $this->reject(
+                $run,
+                $record,
+                NormalizationErrorCode::from($gate['error_code']),
+                $gate['diagnostics'],
+                $counters
+            );
+
+            return;
+        }
+
         $normalizer = $this->registry->resolve((string) $source->provider, (string) $record->entity_type);
 
         if ($normalizer === null) {

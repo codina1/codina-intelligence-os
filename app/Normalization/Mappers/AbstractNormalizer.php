@@ -105,4 +105,31 @@ abstract class AbstractNormalizer implements NormalizerInterface
 
         return is_scalar($payload[$key]) ? (string) $payload[$key] : null;
     }
+
+    /**
+     * Parse optional date fields. Missing/empty → null. Invalid → reject via validate path.
+     *
+     * @return array{ok: bool, value: ?\DateTimeInterface, error: ?string}
+     */
+    protected function parseOptionalDate(array $payload, string $key): array
+    {
+        if (! array_key_exists($key, $payload) || $payload[$key] === null || $payload[$key] === '') {
+            return ['ok' => true, 'value' => null, 'error' => null];
+        }
+
+        if (! is_scalar($payload[$key])) {
+            return ['ok' => false, 'value' => null, 'error' => $key];
+        }
+
+        $raw = trim((string) $payload[$key]);
+        if ($raw === '') {
+            return ['ok' => true, 'value' => null, 'error' => null];
+        }
+
+        try {
+            return ['ok' => true, 'value' => new \DateTimeImmutable($raw), 'error' => null];
+        } catch (\Exception) {
+            return ['ok' => false, 'value' => null, 'error' => $key];
+        }
+    }
 }

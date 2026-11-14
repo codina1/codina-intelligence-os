@@ -2,8 +2,6 @@
 
 namespace App\Normalization\Jobs;
 
-use App\Models\Tenant;
-use App\Models\User;
 use App\Normalization\Services\NormalizationOrchestrator;
 use App\Tenancy\Services\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -11,7 +9,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use RuntimeException;
 use Throwable;
 
 class NormalizationRunJob implements ShouldQueue
@@ -34,17 +31,8 @@ class NormalizationRunJob implements ShouldQueue
     public function handle(TenantContext $tenantContext, NormalizationOrchestrator $orchestrator): array
     {
         try {
-            $tenant = Tenant::query()->find($this->tenantId);
-            $user = User::query()->find($this->userId);
-
-            if ($tenant === null || $user === null) {
-                throw new RuntimeException('Normalization job missing tenant or user.');
-            }
-
-            if (! $user->isPlatformAdmin() && ! in_array($this->tenantId, $user->accessibleTenantIds(), true)) {
-                throw new RuntimeException('Normalization job rejected: cross-tenant access.');
-            }
-
+            // Orchestrator re-validates membership, permissions, ownership, mock mode,
+            // and lease fencing. Do not trust serialized job params as authorization.
             $orchestrator->executeQueuedRun($this->normalizationRunId, $this->tenantId, $this->userId);
 
             return [

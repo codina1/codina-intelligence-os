@@ -9,16 +9,18 @@ use App\Identity\Services\AuthorizationService;
 use App\Models\DataSource;
 use App\Models\NormalizationRun;
 use App\Models\Tenant;
+use App\Models\TenantMembership;
 use App\Models\User;
 use App\Normalization\Enums\NormalizationErrorCode;
 use App\Normalization\Enums\NormalizationRunStatus;
 use App\Normalization\Jobs\NormalizationRunJob;
 use App\Tenancy\Services\TenantContext;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
@@ -30,108 +32,140 @@ class NormalizationOrchestrator
         private readonly AuditLogger $auditLogger,
         private readonly NormalizationRunner $runner,
         private readonly NormalizerRegistry $registry,
+        private readonly NormalizationLeaseManager $leases,
     ) {}
 
     public function start(User $user, string $dataSourcePublicId): NormalizationRun
     {
         $source = $this->findSourceForNormalize($user, $dataSourcePublicId);
-
-        $modeValue = (string) ($source->getAttributes()['mode'] ?? '');
-        if ($modeValue !== DataSourceMode::Mock->value) {
-            throw new UnprocessableEntityHttpException('Only mock data sources may be normalized.');
-        }
-
-        if ($source->status === DataSourceStatus::Disabled) {
-            throw new UnprocessableEntityHttpException('Disabled data sources cannot be normalized.');
-        }
+        $this->assertSourceEligibleForNormalize($source);
 
         if (config('codina.allow_external_http') === true) {
             throw new DomainException(NormalizationErrorCode::ForbiddenMode->value);
         }
 
-        if (! $this->registry->supports((string) $source->provider, $this->defaultEntityForProvider((string) $source->provider))) {
-            // Still allow start — runner rejects unsupported entity rows individually.
-            // Provider with no mappers at all is invalid.
-            $hasAny = false;
-            foreach ($this->registry->all() as $normalizer) {
-                if ($normalizer->provider() === $source->provider) {
-                    $hasAny = true;
-                    break;
-                }
-            }
-            if (! $hasAny) {
-                throw new UnprocessableEntityHttpException('No normalizer registered for provider.');
-            }
-        }
+        $this->assertProviderHasMapper((string) $source->provider);
 
         $tenant = $source->tenant()->first() ?? Tenant::query()->findOrFail($source->tenant_id);
 
-        $run = $this->tenantContext->runWithTenant($tenant, function () use ($user, $source) {
-            return DB::transaction(function () use ($user, $source) {
-                $run = NormalizationRun::query()->create([
-                    'public_id' => (string) Str::uuid(),
-                    'tenant_id' => $source->tenant_id,
-                    'data_source_id' => $source->id,
-                    'status' => NormalizationRunStatus::Queued,
-                    'mapper_version' => (string) config('normalization.default_mapper_bundle_version', '1.0.0'),
-                    'requested_by' => $user->id,
-                    'is_simulated' => true,
-                ]);
+        try {
+            $run = $this->tenantContext->runWithTenant($tenant, function () use ($user, $source) {
+                return DB::transaction(function () use ($user, $source) {
+                    $run = NormalizationRun::query()->create([
+                        'public_id' => (string) Str::uuid(),
+                        'tenant_id' => $source->tenant_id,
+                        'data_source_id' => $source->id,
+                        'status' => NormalizationRunStatus::Queued,
+                        'mapper_version' => (string) config('normalization.default_mapper_bundle_version', '1.0.0'),
+                        'requested_by' => $user->id,
+                        'is_simulated' => true,
+                    ]);
 
-                $this->auditLogger->log('normalization.started', $user, $run, [
-                    'data_source_id' => $source->public_id,
-                    'provider' => $source->provider,
-                ], (int) $source->tenant_id);
+                    $this->leases->ensureScopeRow($run);
+                    $this->leases->reserveForQueuedRun($run);
 
-                return $run;
+                    $this->auditLogger->log('normalization.started', $user, $run, [
+                        'data_source_id' => $source->public_id,
+                        'provider' => $source->provider,
+                    ], (int) $source->tenant_id);
+
+                    return $run->fresh();
+                });
             });
-        });
+        } catch (DomainException $e) {
+            if ($e->getMessage() === NormalizationErrorCode::ActiveRunConflict->value) {
+                throw new ConflictHttpException('An active normalization run already owns this data source.');
+            }
+
+            throw $e;
+        }
 
         NormalizationRunJob::dispatch($run->id, (int) $run->tenant_id, (int) $user->id);
 
-        // Sync queue connection executes immediately; refresh for API response.
         return $run->fresh() ?? $run;
     }
 
     public function executeQueuedRun(int $runId, int $tenantId, int $userId): void
     {
-        $user = User::query()->findOrFail($userId);
-        if (! $user->isPlatformAdmin() && ! in_array($tenantId, $user->accessibleTenantIds(), true)) {
-            throw new RuntimeException('Normalization execute rejected: cross-tenant access.');
+        $user = User::query()->find($userId);
+        $tenant = Tenant::query()->find($tenantId);
+
+        if ($user === null || $tenant === null) {
+            $this->terminateUnauthorized($runId, $tenantId, null, 'missing_user_or_tenant');
+
+            return;
         }
 
-        $tenant = Tenant::query()->findOrFail($tenantId);
+        $run = NormalizationRun::query()->withoutTenantIsolation()
+            ->where('id', $runId)
+            ->first();
 
-        $this->tenantContext->runWithTenant($tenant, function () use ($runId, $tenantId) {
-            $run = NormalizationRun::query()
-                ->where('id', $runId)
-                ->where('tenant_id', $tenantId)
-                ->first();
+        if ($run === null || (int) $run->tenant_id !== (int) $tenantId) {
+            $this->auditLogger->log('normalization.unauthorized_execution', $user, null, [
+                'reason' => 'run_tenant_mismatch_or_missing',
+                'run_id' => $runId,
+                'tenant_id' => $tenantId,
+            ], $tenantId);
 
-            if ($run === null) {
-                throw new NotFoundHttpException('Normalization run not found.');
+            return;
+        }
+
+        try {
+            $this->tenantContext->runWithTenant($tenant, function () use ($run, $user, $tenantId) {
+                if (! $this->userMayExecuteNormalization($user, $tenantId)) {
+                    $this->failUnauthorized($run, $user, 'permission_or_membership_revoked');
+
+                    return;
+                }
+
+                $source = DataSource::query()
+                    ->where('id', $run->data_source_id)
+                    ->where('tenant_id', $tenantId)
+                    ->first();
+
+                if ($source === null) {
+                    $this->failUnauthorized($run, $user, 'data_source_missing_or_cross_tenant');
+
+                    return;
+                }
+
+                try {
+                    $this->assertSourceEligibleForNormalize($source);
+                } catch (UnprocessableEntityHttpException $e) {
+                    $code = str_contains($e->getMessage(), 'Disabled')
+                        ? NormalizationErrorCode::SourceDisabled
+                        : NormalizationErrorCode::ForbiddenMode;
+                    $this->failTerminal($run, $user, $code, 'source_not_eligible');
+
+                    return;
+                }
+
+                if (config('codina.allow_external_http') === true) {
+                    $this->failTerminal($run, $user, NormalizationErrorCode::ForbiddenMode, 'external_http_enabled');
+
+                    return;
+                }
+
+                $lease = $this->leases->acquire($run, $run->lease_owner);
+                $this->runner->run($run->fresh(), $lease);
+            });
+        } catch (DomainException $e) {
+            if ($e->getMessage() === NormalizationErrorCode::ActiveRunConflict->value
+                || $e->getMessage() === NormalizationErrorCode::StaleLease->value) {
+                $this->failTerminal(
+                    $run->fresh() ?? $run,
+                    $user,
+                    NormalizationErrorCode::from($e->getMessage()),
+                    'lease_conflict'
+                );
+
+                return;
             }
 
-            $source = DataSource::query()
-                ->where('id', $run->data_source_id)
-                ->where('tenant_id', $tenantId)
-                ->first();
-
-            if ($source === null) {
-                throw new NotFoundHttpException('Data source not found.');
-            }
-
-            $modeValue = (string) ($source->getAttributes()['mode'] ?? '');
-            if ($modeValue !== DataSourceMode::Mock->value) {
-                throw new DomainException(NormalizationErrorCode::ForbiddenMode->value);
-            }
-
-            if (config('codina.allow_external_http') === true) {
-                throw new DomainException(NormalizationErrorCode::ForbiddenMode->value);
-            }
-
-            $this->runner->run($run);
-        });
+            throw $e;
+        } finally {
+            $this->tenantContext->clear();
+        }
     }
 
     public function findRunForView(User $user, string $publicId): NormalizationRun
@@ -179,6 +213,95 @@ class NormalizationOrchestrator
             'is_simulated' => (bool) $run->is_simulated,
             'mock_only' => true,
         ];
+    }
+
+    private function userMayExecuteNormalization(User $user, int $tenantId): bool
+    {
+        if ($user->isPlatformAdmin()) {
+            return true;
+        }
+
+        $membership = TenantMembership::query()
+            ->where('tenant_id', $tenantId)
+            ->where('user_id', $user->id)
+            ->where('status', 'active')
+            ->exists();
+
+        if (! $membership) {
+            return false;
+        }
+
+        return $user->hasPermissionInTenant('normalize.manage', $tenantId)
+            || $user->hasPermissionInTenant('sync.manage', $tenantId)
+            || $user->hasPermissionInTenant('connectors.manage', $tenantId);
+    }
+
+    private function assertSourceEligibleForNormalize(DataSource $source): void
+    {
+        $modeValue = (string) ($source->getAttributes()['mode'] ?? '');
+        if ($modeValue !== DataSourceMode::Mock->value) {
+            throw new UnprocessableEntityHttpException('Only mock data sources may be normalized.');
+        }
+
+        if ($source->status === DataSourceStatus::Disabled) {
+            throw new UnprocessableEntityHttpException('Disabled data sources cannot be normalized.');
+        }
+    }
+
+    private function assertProviderHasMapper(string $provider): void
+    {
+        foreach ($this->registry->all() as $normalizer) {
+            if ($normalizer->provider() === $provider) {
+                return;
+            }
+        }
+
+        throw new UnprocessableEntityHttpException('No normalizer registered for provider.');
+    }
+
+    private function failUnauthorized(NormalizationRun $run, User $user, string $reason): void
+    {
+        $this->failTerminal($run, $user, NormalizationErrorCode::UnauthorizedExecution, $reason);
+        $this->leases->release($run);
+    }
+
+    private function failTerminal(
+        NormalizationRun $run,
+        ?User $user,
+        NormalizationErrorCode $code,
+        string $reason,
+    ): void {
+        if ($run->status === NormalizationRunStatus::Completed
+            || $run->status === NormalizationRunStatus::CompletedWithErrors) {
+            return;
+        }
+
+        $run->forceFill([
+            'status' => NormalizationRunStatus::Failed,
+            'finished_at' => CarbonImmutable::now(),
+            'last_error_code' => $code->value,
+        ])->save();
+
+        $this->auditLogger->log('normalization.execution_denied', $user, $run, [
+            'reason' => $reason,
+            'error_code' => $code->value,
+        ], (int) $run->tenant_id);
+
+        $this->leases->release($run);
+    }
+
+    private function terminateUnauthorized(int $runId, int $tenantId, ?User $user, string $reason): void
+    {
+        $run = NormalizationRun::query()->withoutTenantIsolation()->find($runId);
+        if ($run !== null) {
+            $this->failTerminal($run, $user, NormalizationErrorCode::UnauthorizedExecution, $reason);
+        } else {
+            $this->auditLogger->log('normalization.unauthorized_execution', $user, null, [
+                'reason' => $reason,
+                'run_id' => $runId,
+                'tenant_id' => $tenantId,
+            ], $tenantId);
+        }
     }
 
     private function findSourceForNormalize(User $user, string $publicId): DataSource
@@ -231,17 +354,5 @@ class NormalizationOrchestrator
         $this->authorization->assertPermission($user, $permission, (int) $source->tenant_id);
 
         return $source;
-    }
-
-    private function defaultEntityForProvider(string $provider): string
-    {
-        return match ($provider) {
-            'wordpress' => 'posts',
-            'woocommerce' => 'products',
-            'tutor_lms_pro' => 'courses',
-            'google_search_console' => 'search_analytics',
-            'google_analytics_4' => 'reports',
-            default => '',
-        };
     }
 }

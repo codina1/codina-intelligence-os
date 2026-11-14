@@ -5,6 +5,7 @@ namespace App\Normalization\Mappers;
 use App\Models\DataSource;
 use App\Models\IngestionRecord;
 use App\Normalization\DTOs\NormalizedMetric;
+use App\Normalization\Enums\NormalizationErrorCode;
 use App\Normalization\Enums\NormalizationTarget;
 
 class Ga4MetricNormalizer extends AbstractNormalizer
@@ -34,6 +35,23 @@ class Ga4MetricNormalizer extends AbstractNormalizer
         return ['source', 'schema_version', 'date', 'dimension', 'users', 'sessions', 'conversions'];
     }
 
+    public function validate(IngestionRecord $record): array
+    {
+        $base = parent::validate($record);
+        if (! $base['ok']) {
+            return $base;
+        }
+
+        $payload = is_array($record->payload_json) ? $record->payload_json : [];
+        $date = $this->parseOptionalDate($payload, 'date');
+        if (! $date['ok']) {
+            return $this->reject(NormalizationErrorCode::InvalidDate, ['field' => 'date']);
+        }
+
+        // Do not fabricate users/sessions/conversions when absent from fixtures.
+        return $base;
+    }
+
     public function normalizeMetric(IngestionRecord $record, DataSource $source): NormalizedMetric
     {
         $payload = is_array($record->payload_json) ? $record->payload_json : [];
@@ -41,6 +59,10 @@ class Ga4MetricNormalizer extends AbstractNormalizer
         $metricKey = (string) $payload['metric'];
         $value = $payload['value'];
         $metricValue = is_numeric($value) ? (string) $value : null;
+
+        $date = $this->parseOptionalDate($payload, 'date');
+        $periodStart = $date['value'];
+        $periodEnd = $date['value'];
 
         $dimensions = array_filter([
             'metric_label' => $metricKey,
@@ -53,8 +75,8 @@ class Ga4MetricNormalizer extends AbstractNormalizer
             'external_id' => $externalId,
             'metric_key' => $metricKey,
             'dimensions' => $dimensions,
-            'period_start' => null,
-            'period_end' => null,
+            'period_start' => $periodStart?->format('Y-m-d'),
+            'period_end' => $periodEnd?->format('Y-m-d'),
         ]);
 
         return new NormalizedMetric(
@@ -64,8 +86,8 @@ class Ga4MetricNormalizer extends AbstractNormalizer
             unit: null,
             dimensions: $dimensions === [] ? null : $dimensions,
             observationIdentityHash: $identity,
-            periodStart: null,
-            periodEnd: null,
+            periodStart: $periodStart,
+            periodEnd: $periodEnd,
             observedAt: null,
             sourcePayloadHash: (string) $record->payload_hash,
             mapperVersion: $this->mapperVersion(),

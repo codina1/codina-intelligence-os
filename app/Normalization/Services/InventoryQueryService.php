@@ -67,7 +67,9 @@ class InventoryQueryService
         $tenantId = $this->resolveTenantId($user, $filters['tenant_id'] ?? null);
         $this->authorization->assertPermission($user, 'inventory.view', $tenantId);
 
-        $query = ContentEntity::query()->withoutTenantIsolation()->where('tenant_id', $tenantId);
+        $query = ContentEntity::query()->withoutTenantIsolation()
+            ->where('tenant_id', $tenantId)
+            ->with(['dataSource' => static fn ($q) => $q->withoutTenantIsolation()]);
 
         if (! empty($filters['content_type'])) {
             $query->where('content_type', $filters['content_type']);
@@ -121,7 +123,9 @@ class InventoryQueryService
         $tenantId = $this->resolveTenantId($user, $filters['tenant_id'] ?? null);
         $this->authorization->assertPermission($user, 'inventory.view', $tenantId);
 
-        $query = MetricObservation::query()->withoutTenantIsolation()->where('tenant_id', $tenantId);
+        $query = MetricObservation::query()->withoutTenantIsolation()
+            ->where('tenant_id', $tenantId)
+            ->with(['dataSource' => static fn ($q) => $q->withoutTenantIsolation()]);
 
         if (! empty($filters['provider'])) {
             $query->where('provider', $filters['provider']);
@@ -161,7 +165,9 @@ class InventoryQueryService
      */
     public function serializeEntity(ContentEntity $entity): array
     {
-        $source = DataSource::query()->withoutTenantIsolation()->find($entity->data_source_id);
+        $source = $entity->relationLoaded('dataSource')
+            ? $entity->dataSource
+            : DataSource::query()->withoutTenantIsolation()->find($entity->data_source_id);
 
         return [
             'id' => $entity->public_id,
@@ -210,7 +216,9 @@ class InventoryQueryService
      */
     public function serializeMetric(MetricObservation $observation): array
     {
-        $source = DataSource::query()->withoutTenantIsolation()->find($observation->data_source_id);
+        $source = $observation->relationLoaded('dataSource')
+            ? $observation->dataSource
+            : DataSource::query()->withoutTenantIsolation()->find($observation->data_source_id);
 
         return [
             'id' => $observation->public_id,

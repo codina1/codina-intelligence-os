@@ -5,6 +5,7 @@ namespace App\Normalization\Mappers;
 use App\Models\DataSource;
 use App\Models\IngestionRecord;
 use App\Normalization\DTOs\NormalizedMetric;
+use App\Normalization\Enums\NormalizationErrorCode;
 use App\Normalization\Enums\NormalizationTarget;
 
 class GscMetricNormalizer extends AbstractNormalizer
@@ -34,6 +35,23 @@ class GscMetricNormalizer extends AbstractNormalizer
         return ['source', 'schema_version', 'impressions', 'ctr', 'position', 'date', 'page', 'country', 'device'];
     }
 
+    public function validate(IngestionRecord $record): array
+    {
+        $base = parent::validate($record);
+        if (! $base['ok']) {
+            return $base;
+        }
+
+        $payload = is_array($record->payload_json) ? $record->payload_json : [];
+        $date = $this->parseOptionalDate($payload, 'date');
+        if (! $date['ok']) {
+            return $this->reject(NormalizationErrorCode::InvalidDate, ['field' => 'date']);
+        }
+
+        // Do not fabricate impressions/ctr/position when absent from fixtures.
+        return $base;
+    }
+
     public function normalizeMetric(IngestionRecord $record, DataSource $source): NormalizedMetric
     {
         $payload = is_array($record->payload_json) ? $record->payload_json : [];
@@ -41,6 +59,10 @@ class GscMetricNormalizer extends AbstractNormalizer
         $query = (string) $payload['query'];
         $clicks = $payload['clicks'];
         $metricValue = is_numeric($clicks) ? (string) $clicks : null;
+
+        $date = $this->parseOptionalDate($payload, 'date');
+        $periodStart = $date['value'];
+        $periodEnd = $date['value'];
 
         $dimensions = array_filter([
             'query' => $query,
@@ -55,8 +77,8 @@ class GscMetricNormalizer extends AbstractNormalizer
             'external_id' => $externalId,
             'metric_key' => 'clicks',
             'dimensions' => $dimensions,
-            'period_start' => null,
-            'period_end' => null,
+            'period_start' => $periodStart?->format('Y-m-d'),
+            'period_end' => $periodEnd?->format('Y-m-d'),
         ]);
 
         return new NormalizedMetric(
@@ -66,8 +88,8 @@ class GscMetricNormalizer extends AbstractNormalizer
             unit: 'count',
             dimensions: $dimensions === [] ? null : $dimensions,
             observationIdentityHash: $identity,
-            periodStart: null,
-            periodEnd: null,
+            periodStart: $periodStart,
+            periodEnd: $periodEnd,
             observedAt: null,
             sourcePayloadHash: (string) $record->payload_hash,
             mapperVersion: $this->mapperVersion(),

@@ -6,6 +6,7 @@ use App\Models\DataSource;
 use App\Models\IngestionRecord;
 use App\Models\MetricObservation;
 use App\Normalization\DTOs\NormalizedMetric;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -27,26 +28,34 @@ class MetricProjectionService
                 ->first();
 
             if ($observation === null) {
-                $observation = MetricObservation::query()->create([
-                    'public_id' => (string) Str::uuid(),
-                    'tenant_id' => $source->tenant_id,
-                    'site_id' => $source->site_id,
-                    'data_source_id' => $source->id,
-                    'source_ingestion_record_id' => $record->id,
-                    'provider' => $normalized->provider,
-                    'metric_key' => $normalized->metricKey,
-                    'metric_value' => $normalized->metricValue,
-                    'unit' => $normalized->unit,
-                    'dimensions_json' => $normalized->dimensions,
-                    'observation_identity_hash' => $normalized->observationIdentityHash,
-                    'period_start' => $normalized->periodStart,
-                    'period_end' => $normalized->periodEnd,
-                    'observed_at' => $normalized->observedAt,
-                    'source_payload_hash' => $normalized->sourcePayloadHash,
-                    'mapper_version' => $normalized->mapperVersion,
-                ]);
+                try {
+                    $observation = MetricObservation::query()->create([
+                        'public_id' => (string) Str::uuid(),
+                        'tenant_id' => $source->tenant_id,
+                        'site_id' => $source->site_id,
+                        'data_source_id' => $source->id,
+                        'source_ingestion_record_id' => $record->id,
+                        'provider' => $normalized->provider,
+                        'metric_key' => $normalized->metricKey,
+                        'metric_value' => $normalized->metricValue,
+                        'unit' => $normalized->unit,
+                        'dimensions_json' => $normalized->dimensions,
+                        'observation_identity_hash' => $normalized->observationIdentityHash,
+                        'period_start' => $normalized->periodStart,
+                        'period_end' => $normalized->periodEnd,
+                        'observed_at' => $normalized->observedAt,
+                        'source_payload_hash' => $normalized->sourcePayloadHash,
+                        'mapper_version' => $normalized->mapperVersion,
+                    ]);
 
-                return ['outcome' => 'created', 'observation' => $observation];
+                    return ['outcome' => 'created', 'observation' => $observation];
+                } catch (UniqueConstraintViolationException) {
+                    $observation = MetricObservation::query()
+                        ->where('data_source_id', $source->id)
+                        ->where('observation_identity_hash', $normalized->observationIdentityHash)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                }
             }
 
             $unchanged = $observation->source_payload_hash === $normalized->sourcePayloadHash

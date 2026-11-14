@@ -31,6 +31,10 @@ class NormalizationRun extends Model
         'last_error_code',
         'requested_by',
         'is_simulated',
+        'lease_owner',
+        'generation',
+        'lease_expires_at',
+        'heartbeat_at',
     ];
 
     protected function casts(): array
@@ -40,6 +44,8 @@ class NormalizationRun extends Model
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'is_simulated' => 'boolean',
+            'lease_expires_at' => 'datetime',
+            'heartbeat_at' => 'datetime',
         ];
     }
 

@@ -59,23 +59,22 @@ class NormalizationSecurityTest extends TestCase
     public function test_queued_job_rejects_cross_tenant_user(): void
     {
         [$ownerA, $tenantA] = $this->makeTenantUser('tenant_owner');
-        [$ownerB, $tenantB] = $this->makeTenantUser('tenant_owner');
+        [$ownerB] = $this->makeTenantUser('tenant_owner');
         $sourceId = $this->createAndSync($ownerA, $tenantA, 'wordpress', 'posts');
 
         Queue::fake();
-        // Create a run row directly under tenant A, then attempt execution as user B.
-        $response = $this->actingAs($ownerA)->postJsonWithCsrf('/api/v1/data-sources/'.$sourceId.'/normalize');
-        // With sync queue the job already ran; recreate via direct model for job check.
-        Queue::fake();
+        $this->actingAs($ownerA)->postJsonWithCsrf('/api/v1/data-sources/'.$sourceId.'/normalize')
+            ->assertStatus(202);
 
-        $run = \App\Models\NormalizationRun::query()->withoutTenantIsolation()->first();
-        $this->assertNotNull($run);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('cross-tenant');
+        $run = \App\Models\NormalizationRun::query()->withoutTenantIsolation()->firstOrFail();
 
         $job = new NormalizationRunJob((int) $run->id, (int) $tenantA->id, (int) $ownerB->id);
         $job->handle(app(TenantContext::class), app(\App\Normalization\Services\NormalizationOrchestrator::class));
+
+        $run->refresh();
+        $this->assertSame('failed', $run->status->value);
+        $this->assertSame('unauthorized_execution', $run->last_error_code);
+        $this->assertNull(app(TenantContext::class)->id());
     }
 
     public function test_tenant_context_cleared_after_job(): void

@@ -45,3 +45,11 @@ Absent fixture fields stay **null**. No cross-provider merge. Metrics stay indep
 - Content: unique `(data_source_id, entity_type, external_id_hash)`; new version only when normalized payload hash changes
 - Metrics: unique `(data_source_id, observation_identity_hash)`; numeric equality tolerant of decimal scale
 - Rebuildable by re-running normalize against the same staging set
+
+## Provenance (remediation)
+
+Only project `ingestion_records` whose `last_sync_run_id` references a **completed** SyncRun for the same tenant/source. Latest provenance from partial/failed/cancelled runs is inadmissible. Prior completed payloads are **not** reconstructable from mutable staging — fail closed (`inadmissible_provenance`).
+
+## Concurrency (remediation)
+
+Exclusive `normalization_active_scopes` lease per data source (generation + owner + TTL). Duplicate normalize → **409**. Stale workers fail fencing checks and cannot write after ownership transfer.
