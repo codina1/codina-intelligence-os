@@ -1,12 +1,15 @@
 # Phase 02C Remediation Report
 
-**Status:** `PHASE_02C_READY_FOR_FINAL_REVIEW` (CI stamp pending on this HEAD)
+**Status:** `PHASE_02C_READY_FOR_FINAL_REVIEW`
 
 | Item | Value |
 | --- | --- |
 | Reviewed base (fencing) | `54b007f1decf410e4cc8c6172a53aba7d9792dd2` |
-| Prior remediation tip | `6cd36321612c14e1eac1f65a73d096bdd6363348` |
+| Fencing tip | `6d8046f91a0b1976fbcc3800e0ef69a36c92ca4e` |
 | PR | https://github.com/codina1/codina-intelligence-os/pull/4 |
+| CI (push, tip) | https://github.com/codina1/codina-intelligence-os/actions/runs/43593989925 |
+| CI (PR, tip) | https://github.com/codina1/codina-intelligence-os/actions/runs/43593993874 |
+| CI result | **success** — 2 checks, 0 failures |
 | Mode | Mock only — not Production |
 
 ## Root causes (prior + fencing)
@@ -48,7 +51,8 @@ Write-boundary revalidation + staging snapshot detects concurrent Sync payload c
 | Phase 02C Normalization (critical) | **27 passed** |
 | Critical `--fail-on-skipped` | **86 passed** |
 | Full PHPUnit | **155 passed** / 0 skipped |
-| Two-connection MariaDB fencing | `NormalizationLeaseFencingMariaDbTest` (stale reject after transfer; held lock blocks transfer; PDO interleave rollback; stale abort isolation; staging mutation) |
+| Two-connection MariaDB fencing | `NormalizationLeaseFencingMariaDbTest` |
+| CI on tip `6d8046f` | success (push + PR) |
 
 ## Risks / residual
 
