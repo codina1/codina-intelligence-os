@@ -73,7 +73,7 @@ class DataSourceService
                 function () use ($publicId, $user) {
                     $source = DataSource::query()
                         ->withoutTenantIsolation()
-                        ->with(['capabilities', 'credentialReferences'])
+                        ->with($this->safeRelationLoads())
                         ->where('public_id', $publicId)
                         ->first();
 
@@ -89,7 +89,7 @@ class DataSourceService
         }
 
         $source = $this->membershipScopedQuery($user)
-            ->with(['capabilities', 'credentialReferences'])
+            ->with($this->safeRelationLoads())
             ->where('public_id', $publicId)
             ->first();
 
@@ -121,7 +121,11 @@ class DataSourceService
             throw ValidationException::withMessages(['mode' => 'Only mock mode is allowed in Phase 02A.']);
         }
 
-        $settings = $this->settingsValidator->validate($provider, $data['settings'] ?? []);
+        [$settings, $externalResourceId] = $this->settingsValidator->validateWithExternalResourceId(
+            $provider,
+            $data['settings'] ?? [],
+            $data['external_resource_id'] ?? null,
+        );
         $siteId = array_key_exists('site_id', $data) && $data['site_id'] !== null
             ? (int) $data['site_id']
             : null;
@@ -136,46 +140,68 @@ class DataSourceService
             throw ValidationException::withMessages(['auth_method' => 'Unsupported auth method for provider.']);
         }
 
-        $this->tenantContext->set(Tenant::query()->findOrFail($tenantId));
+        $tenant = Tenant::query()->findOrFail($tenantId);
 
         try {
-            $source = DB::transaction(function () use ($user, $tenantId, $siteId, $provider, $data, $settings, $authMethod, $definition) {
-                $source = DataSource::query()->create([
-                    'public_id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                    'site_id' => $siteId,
-                    'provider' => $provider,
-                    'display_name' => $data['display_name'],
-                    'external_resource_id' => $settings['mock_external_resource_id'] ?? ($data['external_resource_id'] ?? null),
-                    'mode' => DataSourceMode::Mock,
-                    'status' => DataSourceStatus::Configured,
-                    'auth_method' => $authMethod,
-                    'settings' => $settings,
-                ]);
+            $source = $this->tenantContext->runWithTenant($tenant, function () use (
+                $user,
+                $tenantId,
+                $siteId,
+                $provider,
+                $data,
+                $settings,
+                $externalResourceId,
+                $authMethod,
+                $definition
+            ) {
+                return DB::transaction(function () use (
+                    $user,
+                    $tenantId,
+                    $siteId,
+                    $provider,
+                    $data,
+                    $settings,
+                    $externalResourceId,
+                    $authMethod,
+                    $definition
+                ) {
+                    $source = DataSource::query()->create([
+                        'public_id' => (string) Str::uuid(),
+                        'tenant_id' => $tenantId,
+                        'site_id' => $siteId,
+                        'provider' => $provider,
+                        'display_name' => $data['display_name'],
+                        'external_resource_id' => $externalResourceId,
+                        'mode' => DataSourceMode::Mock,
+                        'status' => DataSourceStatus::Configured,
+                        'auth_method' => $authMethod,
+                        'settings' => $settings,
+                    ]);
 
-                foreach ($definition->capabilities as $capability) {
-                    DataSourceCapability::query()->create([
+                    foreach ($definition->capabilities as $capability) {
+                        DataSourceCapability::query()->create([
+                            'tenant_id' => $tenantId,
+                            'data_source_id' => $source->id,
+                            'capability_key' => $capability,
+                            'availability_status' => 'available',
+                            'metadata' => ['source' => 'provider_catalog', 'mode' => 'mock'],
+                        ]);
+                    }
+
+                    $reference = $this->secretStore->putMockReference((string) $tenantId, 'mock:placeholder:'.$provider);
+                    CredentialReference::query()->create([
                         'tenant_id' => $tenantId,
                         'data_source_id' => $source->id,
-                        'capability_key' => $capability,
-                        'availability_status' => 'available',
-                        'metadata' => ['source' => 'provider_catalog', 'mode' => 'mock'],
+                        'credential_type' => $authMethod === 'none' ? 'none' : 'mock_metadata',
+                        'secret_reference' => $reference,
+                        'status' => 'mock',
+                        'expires_at' => null,
                     ]);
-                }
 
-                $reference = $this->secretStore->putMockReference((string) $tenantId, 'mock:placeholder:'.$provider);
-                CredentialReference::query()->create([
-                    'tenant_id' => $tenantId,
-                    'data_source_id' => $source->id,
-                    'credential_type' => $authMethod === 'none' ? 'none' : 'mock_metadata',
-                    'secret_reference' => $reference,
-                    'status' => 'mock',
-                    'expires_at' => null,
-                ]);
+                    $this->recordConfigurationVersion($source, $user, $settings, 'initial_configuration');
 
-                $this->recordConfigurationVersion($source, $user, $settings, 'initial_configuration');
-
-                return $source->fresh(['capabilities', 'credentialReferences']);
+                    return $source->fresh($this->safeRelationLoads());
+                });
             });
         } catch (QueryException $e) {
             if ($this->isDuplicateKey($e)) {
@@ -234,12 +260,17 @@ class DataSourceService
             $source->auth_method = (string) $data['auth_method'];
         }
 
-        if (isset($data['settings'])) {
-            $settings = $this->settingsValidator->validate($source->provider, $data['settings']);
+        if (isset($data['settings']) || array_key_exists('external_resource_id', $data)) {
+            $incomingSettings = $data['settings'] ?? ($source->settings ?? []);
+            [$settings, $externalResourceId] = $this->settingsValidator->validateWithExternalResourceId(
+                $source->provider,
+                is_array($incomingSettings) ? $incomingSettings : [],
+                array_key_exists('external_resource_id', $data)
+                    ? $data['external_resource_id']
+                    : ($incomingSettings['mock_external_resource_id'] ?? null),
+            );
             $source->settings = $settings;
-            if (isset($settings['mock_external_resource_id'])) {
-                $source->external_resource_id = $settings['mock_external_resource_id'];
-            }
+            $source->external_resource_id = $externalResourceId;
         }
 
         if (isset($data['status'])) {
@@ -248,34 +279,36 @@ class DataSourceService
                 throw ValidationException::withMessages(['status' => 'Invalid status.']);
             }
             try {
-                $this->lifecycle->assertTransition($source->status, $target);
+                $this->lifecycle->assertPublicTransition($source->status, $target);
             } catch (DomainException $e) {
                 throw new UnprocessableEntityHttpException($e->getMessage());
             }
             if ($source->status === DataSourceStatus::Disabled && $target === DataSourceStatus::Configured) {
-                // Re-enable requires valid configuration (already validated above / on create).
+                // Re-enable requires valid configuration; does not imply connectivity.
                 if ($source->settings === null || $source->settings === []) {
                     throw new UnprocessableEntityHttpException('Cannot re-enable a data source without valid configuration.');
                 }
             }
             $source->status = $target;
         } elseif ($source->status === DataSourceStatus::Draft) {
-            $this->lifecycle->assertTransition($source->status, DataSourceStatus::Configured);
+            $this->lifecycle->assertPublicTransition($source->status, DataSourceStatus::Configured);
             $source->status = DataSourceStatus::Configured;
         }
 
-        $this->tenantContext->set($source->tenant);
+        $source = $this->tenantContext->runWithTenant($source->tenant, function () use ($source, $user, $data) {
+            return DB::transaction(function () use ($source, $user, $data) {
+                $source->save();
+                if (isset($data['settings']) || array_key_exists('external_resource_id', $data)) {
+                    $this->recordConfigurationVersion(
+                        $source,
+                        $user,
+                        $source->settings ?? [],
+                        $data['change_reason'] ?? 'settings_update'
+                    );
+                }
 
-        DB::transaction(function () use ($source, $user, $data) {
-            $source->save();
-            if (isset($data['settings'])) {
-                $this->recordConfigurationVersion(
-                    $source,
-                    $user,
-                    $source->settings ?? [],
-                    $data['change_reason'] ?? 'settings_update'
-                );
-            }
+                return $source->fresh($this->safeRelationLoads());
+            });
         });
 
         $this->auditLogger->log('data_source.updated', $user, $source, [
@@ -283,7 +316,7 @@ class DataSourceService
             'status' => $source->status->value,
         ], (int) $source->tenant_id);
 
-        return $source->fresh(['capabilities', 'credentialReferences']);
+        return $source;
     }
 
     public function disable(User $user, string $publicId): DataSource
@@ -297,15 +330,18 @@ class DataSourceService
             throw new UnprocessableEntityHttpException($e->getMessage());
         }
 
-        $this->tenantContext->set($source->tenant);
-        $source->status = DataSourceStatus::Disabled;
-        $source->save();
+        $source = $this->tenantContext->runWithTenant($source->tenant, function () use ($source) {
+            $source->status = DataSourceStatus::Disabled;
+            $source->save();
+
+            return $source->fresh($this->safeRelationLoads());
+        });
 
         $this->auditLogger->log('data_source.disabled', $user, $source, [
             'public_id' => $source->public_id,
         ], (int) $source->tenant_id);
 
-        return $source->fresh(['capabilities', 'credentialReferences']);
+        return $source;
     }
 
     /**
@@ -363,52 +399,77 @@ class DataSourceService
 
         $durationMs = (int) max(1, (int) (($started ? (hrtime(true) - $started) : 1_000_000) / 1_000_000));
 
-        $this->tenantContext->set($source->tenant);
+        $persisted = $this->tenantContext->runWithTenant($source->tenant, function () use (
+            $source,
+            $ok,
+            $errorCode,
+            $message,
+            $scenario,
+            $durationMs,
+            $simulatedLatency,
+            $raw,
+        ) {
+            return DB::transaction(function () use (
+                $source,
+                $ok,
+                $errorCode,
+                $message,
+                $scenario,
+                $durationMs,
+                $simulatedLatency,
+                $raw,
+            ) {
+                $check = DataSourceHealthCheck::query()->create([
+                    'tenant_id' => $source->tenant_id,
+                    'data_source_id' => $source->id,
+                    'check_type' => 'mock_connection_test',
+                    'status' => $ok ? 'healthy' : 'error',
+                    'duration_ms' => $durationMs,
+                    'error_code' => $errorCode,
+                    'result_metadata' => [
+                        'message' => $message,
+                        'scenario' => $scenario,
+                        'simulated_latency_ms' => $simulatedLatency,
+                        'latency_is_simulated' => true,
+                        'external_http' => false,
+                        'mode' => 'mock',
+                        'verified_real_connection' => false,
+                        'raw' => $this->sanitizeResult($raw),
+                    ],
+                    'checked_at' => now(),
+                ]);
 
-        $check = DataSourceHealthCheck::query()->create([
-            'tenant_id' => $source->tenant_id,
-            'data_source_id' => $source->id,
-            'check_type' => 'mock_connection_test',
-            'status' => $ok ? 'healthy' : 'error',
-            'duration_ms' => $durationMs,
-            'error_code' => $errorCode,
-            'result_metadata' => [
-                'message' => $message,
-                'scenario' => $scenario,
-                'simulated_latency_ms' => $simulatedLatency,
-                'latency_is_simulated' => true,
-                'external_http' => false,
-                'mode' => 'mock',
-                'verified_real_connection' => false,
-                'raw' => $this->sanitizeResult($raw),
-            ],
-            'checked_at' => now(),
-        ]);
+                $previousSuccess = $source->last_success_at;
+                $source->last_tested_at = now();
+                if ($ok) {
+                    $source->last_success_at = now();
+                    $this->lifecycle->assertTransition($source->status, DataSourceStatus::Healthy);
+                    $source->status = DataSourceStatus::Healthy;
+                } else {
+                    // Preserve last successful timestamp independently from latest failure.
+                    $source->last_success_at = $previousSuccess;
+                    $this->lifecycle->assertTransition($source->status, DataSourceStatus::Error);
+                    $source->status = DataSourceStatus::Error;
+                }
+                $source->save();
 
-        $previousSuccess = $source->last_success_at;
-        $source->last_tested_at = now();
-        if ($ok) {
-            $source->last_success_at = now();
-            $this->lifecycle->assertTransition($source->status, DataSourceStatus::Healthy);
-            $source->status = DataSourceStatus::Healthy;
-        } else {
-            // Preserve last successful timestamp independently from latest failure.
-            $source->last_success_at = $previousSuccess;
-            $this->lifecycle->assertTransition($source->status, DataSourceStatus::Error);
-            $source->status = DataSourceStatus::Error;
-        }
-        $source->save();
+                return [
+                    'source' => $source->fresh($this->safeRelationLoads()),
+                    'check' => $check,
+                ];
+            });
+        });
 
-        $this->auditLogger->log('data_source.tested', $user, $source, [
+        $this->auditLogger->log('data_source.tested', $user, $persisted['source'], [
             'scenario' => $scenario,
             'result' => $ok ? 'healthy' : 'error',
             'error_code' => $errorCode,
             'verified_real_connection' => false,
-        ], (int) $source->tenant_id);
+        ], (int) $persisted['source']->tenant_id);
 
         return [
-            'source' => $source->fresh(['capabilities', 'credentialReferences']),
-            'check' => $check,
+            'source' => $persisted['source'],
+            'check' => $persisted['check'],
             'result' => [
                 'ok' => $ok,
                 'status' => $ok ? 'healthy' : 'error',
@@ -502,7 +563,7 @@ class DataSourceService
                 $user,
                 'data_sources.query.platform',
                 function () use ($tenantId) {
-                    $query = DataSource::query()->withoutTenantIsolation()->with(['capabilities']);
+                    $query = DataSource::query()->withoutTenantIsolation()->with($this->safeRelationLoads(['capabilities']));
                     if ($tenantId !== null) {
                         $query->where('tenant_id', $tenantId);
                     }
@@ -538,8 +599,27 @@ class DataSourceService
 
         return DataSource::query()
             ->withoutTenantIsolation()
-            ->with(['capabilities'])
+            ->with($this->safeRelationLoads(['capabilities']))
             ->whereIn('tenant_id', $accessible);
+    }
+
+    /**
+     * Eager-load tenant-owned relations without requiring ambient TenantContext.
+     * Callers must already have authorized the parent row's tenant.
+     *
+     * @param  list<string>  $relations
+     * @return array<string, \Closure>
+     */
+    private function safeRelationLoads(array $relations = ['capabilities', 'credentialReferences']): array
+    {
+        $loads = [];
+        foreach ($relations as $relation) {
+            $loads[$relation] = static function ($query): void {
+                $query->withoutTenantIsolation();
+            };
+        }
+
+        return $loads;
     }
 
     private function assertSiteBelongsToTenant(int $siteId, int $tenantId): void

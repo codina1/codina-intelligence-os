@@ -52,7 +52,8 @@ class DataSourceController extends Controller
             'site_id' => ['nullable', 'integer'],
             'provider' => ['required', 'string', 'max:64'],
             'display_name' => ['required', 'string', 'max:255'],
-            'external_resource_id' => ['nullable', 'string', 'max:255'],
+            // Strict mock-safe rules enforced in ProviderSettingsValidator (not max-length alone).
+            'external_resource_id' => ['nullable', 'string'],
             'mode' => ['nullable', 'in:mock'],
             'auth_method' => ['nullable', 'string', 'max:64'],
             'settings' => ['nullable', 'array'],
@@ -87,10 +88,12 @@ class DataSourceController extends Controller
             'site_id' => ['sometimes', 'nullable', 'integer'],
             'provider' => ['sometimes', 'string', 'max:64'],
             'display_name' => ['sometimes', 'string', 'max:255'],
+            'external_resource_id' => ['sometimes', 'nullable', 'string'],
             'mode' => ['sometimes', 'in:mock'],
             'auth_method' => ['sometimes', 'string', 'max:64'],
             'settings' => ['sometimes', 'array'],
-            'status' => ['sometimes', 'in:draft,configured,healthy,error,disabled'],
+            // healthy/error are health-check-derived only — not settable via public PATCH.
+            'status' => ['sometimes', 'in:draft,configured,disabled'],
             'change_reason' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 

@@ -22,6 +22,29 @@ class TenantContext
         $this->membershipId = $membershipId;
     }
 
+    /**
+     * Scoped tenant execution with guaranteed restoration (no cross-request leak).
+     *
+     * @template TReturn
+     *
+     * @param  callable(): TReturn  $callback
+     * @return TReturn
+     */
+    public function runWithTenant(?Tenant $tenant, callable $callback, ?int $membershipId = null): mixed
+    {
+        $previousTenant = $this->tenant;
+        $previousMembership = $this->membershipId;
+
+        $this->set($tenant, $membershipId);
+
+        try {
+            return $callback();
+        } finally {
+            $this->tenant = $previousTenant;
+            $this->membershipId = $previousMembership;
+        }
+    }
+
     public function clear(): void
     {
         $this->tenant = null;

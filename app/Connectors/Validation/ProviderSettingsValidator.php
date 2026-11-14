@@ -25,7 +25,74 @@ class ProviderSettingsValidator
         'client_secret',
     ];
 
+    public const EXTERNAL_RESOURCE_PATTERN = '^[A-Za-z0-9._:-]{1,128}$';
+
     public function __construct(private readonly ProviderRegistry $providers) {}
+
+    /**
+     * Resolve a single canonical mock-safe external resource identifier.
+     *
+     * Prefer settings.mock_external_resource_id. Top-level external_resource_id is
+     * accepted only when settings omit it, or when both match after validation.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array{0: array<string, mixed>, 1: ?string} [validated settings, canonical id]
+     */
+    public function validateWithExternalResourceId(
+        string $providerKey,
+        array $settings,
+        mixed $topLevelExternalResourceId = null,
+    ): array {
+        $settingsHasId = array_key_exists('mock_external_resource_id', $settings)
+            && $settings['mock_external_resource_id'] !== null
+            && $settings['mock_external_resource_id'] !== '';
+        $topProvided = $topLevelExternalResourceId !== null && $topLevelExternalResourceId !== '';
+
+        if ($topProvided && ! is_string($topLevelExternalResourceId)) {
+            throw ValidationException::withMessages([
+                'external_resource_id' => 'Must be a mock-safe string identifier.',
+            ]);
+        }
+
+        if ($settingsHasId && $topProvided) {
+            $fromSettings = $this->validateExternalResourceId((string) $settings['mock_external_resource_id'], 'settings.mock_external_resource_id');
+            $fromTop = $this->validateExternalResourceId((string) $topLevelExternalResourceId, 'external_resource_id');
+            if ($fromSettings !== $fromTop) {
+                throw ValidationException::withMessages([
+                    'external_resource_id' => 'Conflicts with settings.mock_external_resource_id.',
+                    'settings.mock_external_resource_id' => 'Conflicts with external_resource_id.',
+                ]);
+            }
+            $settings['mock_external_resource_id'] = $fromSettings;
+        } elseif ($topProvided && ! $settingsHasId) {
+            $settings['mock_external_resource_id'] = $this->validateExternalResourceId(
+                (string) $topLevelExternalResourceId,
+                'external_resource_id'
+            );
+        }
+
+        $validated = $this->validate($providerKey, $settings);
+        $canonical = $validated['mock_external_resource_id'] ?? null;
+
+        return [$validated, is_string($canonical) ? $canonical : null];
+    }
+
+    public function validateExternalResourceId(string $value, string $field = 'external_resource_id'): string
+    {
+        if ($this->looksLikeSecretOrUrl($value)) {
+            throw ValidationException::withMessages([
+                $field => 'Value looks like a URL or credential and is rejected in mock mode.',
+            ]);
+        }
+
+        if (preg_match('/'.self::EXTERNAL_RESOURCE_PATTERN.'/', $value) !== 1) {
+            throw ValidationException::withMessages([
+                $field => 'Must match mock-safe pattern [A-Za-z0-9._:-]{1,128}.',
+            ]);
+        }
+
+        return $value;
+    }
 
     /**
      * @param  array<string, mixed>  $settings

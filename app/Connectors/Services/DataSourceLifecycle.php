@@ -18,6 +18,24 @@ class DataSourceLifecycle
         }
     }
 
+    /**
+     * Public API may not set health-derived states; only mock health checks may.
+     */
+    public function assertPublicTransition(DataSourceStatus $from, DataSourceStatus $to): void
+    {
+        if (in_array($to, [DataSourceStatus::Healthy, DataSourceStatus::Error], true)) {
+            throw new DomainException(
+                'Status healthy/error can only be set by mock health-check execution, not by public updates.'
+            );
+        }
+
+        if ($from === DataSourceStatus::Disabled && $to !== DataSourceStatus::Configured) {
+            throw new DomainException('A disabled data source may only be re-enabled to configured.');
+        }
+
+        $this->assertTransition($from, $to);
+    }
+
     public function assertExecutable(DataSourceStatus $status): void
     {
         if ($status === DataSourceStatus::Disabled) {
