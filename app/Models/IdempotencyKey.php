@@ -9,10 +9,12 @@ class IdempotencyKey extends Model
 {
     protected $fillable = [
         'tenant_id',
+        'tenant_scope_id',
         'user_id',
         'key',
         'route',
         'request_hash',
+        'status',
         'response_code',
         'response_body',
         'expires_at',
@@ -23,6 +25,7 @@ class IdempotencyKey extends Model
         return [
             'response_body' => 'array',
             'expires_at' => 'datetime',
+            'tenant_scope_id' => 'integer',
         ];
     }
 

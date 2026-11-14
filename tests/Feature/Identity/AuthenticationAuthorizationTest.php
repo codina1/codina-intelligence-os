@@ -15,7 +15,7 @@ class AuthenticationAuthorizationTest extends TestCase
             'password' => Hash::make('password'),
         ]);
 
-        $response = $this->postJson('/api/v1/auth/login', [
+        $response = $this->postJsonWithCsrf('/api/v1/auth/login', [
             'email' => 'login@codina.local',
             'password' => 'password',
         ]);
@@ -34,7 +34,7 @@ class AuthenticationAuthorizationTest extends TestCase
             'password' => Hash::make('password'),
         ]);
 
-        $this->postJson('/api/v1/auth/login', [
+        $this->postJsonWithCsrf('/api/v1/auth/login', [
             'email' => 'login@codina.local',
             'password' => 'wrong',
         ])->assertStatus(422)
@@ -60,7 +60,7 @@ class AuthenticationAuthorizationTest extends TestCase
         [$viewer, $tenant] = $this->makeTenantUser('viewer');
 
         $this->actingAs($viewer)
-            ->postJson('/api/v1/sites', [
+            ->postJsonWithCsrf('/api/v1/sites', [
                 'tenant_id' => $tenant->id,
                 'name' => 'Denied Site',
                 'primary_url' => 'https://denied.example.test',

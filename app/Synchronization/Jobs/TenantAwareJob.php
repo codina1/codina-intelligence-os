@@ -11,6 +11,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use RuntimeException;
+use Throwable;
 
 class TenantAwareJob implements ShouldQueue
 {
@@ -27,24 +28,30 @@ class TenantAwareJob implements ShouldQueue
 
     public function handle(TenantContext $tenantContext): array
     {
-        $tenant = Tenant::query()->find($this->tenantId);
-        $user = User::query()->find($this->userId);
+        try {
+            $tenant = Tenant::query()->find($this->tenantId);
+            $user = User::query()->find($this->userId);
 
-        if ($tenant === null || $user === null) {
-            throw new RuntimeException('Tenant-aware job missing tenant or user.');
+            if ($tenant === null || $user === null) {
+                throw new RuntimeException('Tenant-aware job missing tenant or user.');
+            }
+
+            if (! $user->isPlatformAdmin() && ! in_array($this->tenantId, $user->accessibleTenantIds(), true)) {
+                throw new RuntimeException('Tenant-aware job rejected: cross-tenant access.');
+            }
+
+            $tenantContext->set($tenant);
+
+            return [
+                'ok' => true,
+                'tenant_id' => $tenantContext->id(),
+                'user_id' => $user->id,
+                'action' => $this->action,
+            ];
+        } catch (Throwable $e) {
+            throw $e;
+        } finally {
+            $tenantContext->clear();
         }
-
-        if (! $user->isPlatformAdmin() && ! in_array($this->tenantId, $user->accessibleTenantIds(), true)) {
-            throw new RuntimeException('Tenant-aware job rejected: cross-tenant access.');
-        }
-
-        $tenantContext->set($tenant);
-
-        return [
-            'ok' => true,
-            'tenant_id' => $tenantContext->id(),
-            'user_id' => $user->id,
-            'action' => $this->action,
-        ];
     }
 }

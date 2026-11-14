@@ -2,12 +2,16 @@
 
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\EnsureJsonApi;
+use App\Http\Middleware\VerifySpaCsrfToken;
 use App\Shared\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Session\TokenMismatchException;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -20,11 +24,18 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->appendToGroup('api', [
-            AssignRequestId::class,
-            EnsureJsonApi::class,
+        // SPA session auth strategy:
+        // 1) GET /api/v1/auth/csrf-cookie (sets encrypted XSRF-TOKEN cookie)
+        // 2) Send X-XSRF-TOKEN (or X-CSRF-TOKEN) on state-changing requests
+        // 3) Session cookie authenticates the first-party SPA
+        $middleware->api(prepend: [
+            EncryptCookies::class,
+            AddQueuedCookiesToResponse::class,
             \Illuminate\Session\Middleware\StartSession::class,
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            VerifySpaCsrfToken::class,
+            AssignRequestId::class,
+            EnsureJsonApi::class,
         ]);
 
         $middleware->alias([
@@ -35,6 +46,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        $exceptions->render(function (TokenMismatchException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return ApiResponse::error('csrf_token_mismatch', 'CSRF token mismatch.', 419);
+            }
+        });
 
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
@@ -60,6 +77,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     401 => 'unauthenticated',
                     403 => 'forbidden',
                     404 => 'not_found',
+                    419 => 'csrf_token_mismatch',
                     429 => 'rate_limited',
                     default => 'http_error',
                 };
@@ -74,15 +92,20 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render(function (Throwable $e, Request $request) {
+        $exceptions->render(function (\Throwable $e, Request $request) {
             if (! ($request->is('api/*') || $request->expectsJson())) {
                 return null;
             }
 
             if ($e instanceof AuthenticationException
                 || $e instanceof ValidationException
-                || $e instanceof HttpExceptionInterface) {
+                || $e instanceof HttpExceptionInterface
+                || $e instanceof TokenMismatchException) {
                 return null;
+            }
+
+            if ($e instanceof \App\Tenancy\Exceptions\TenantContextRequiredException) {
+                return ApiResponse::error('tenant_context_required', $e->getMessage(), 403);
             }
 
             $message = config('app.debug') ? $e->getMessage() : 'Server error.';

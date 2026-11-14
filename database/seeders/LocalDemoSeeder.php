@@ -93,7 +93,7 @@ class LocalDemoSeeder extends Seeder
             );
         }
 
-        Site::query()->withoutGlobalScopes()->updateOrCreate(
+        Site::query()->withoutTenantIsolation()->updateOrCreate(
             ['tenant_id' => $tenantA->id, 'slug' => 'site-a1'],
             [
                 'name' => 'Site A1',
@@ -103,7 +103,7 @@ class LocalDemoSeeder extends Seeder
             ]
         );
 
-        Site::query()->withoutGlobalScopes()->updateOrCreate(
+        Site::query()->withoutTenantIsolation()->updateOrCreate(
             ['tenant_id' => $tenantB->id, 'slug' => 'site-b1'],
             [
                 'name' => 'Site B1',

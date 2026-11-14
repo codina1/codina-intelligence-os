@@ -8,12 +8,13 @@ Shared database with row-level tenant ownership (`tenant_id`).
 
 1. **Membership-derived access** — `User::accessibleTenantIds()` and `membershipFor()`; platform admins are explicit.
 2. **Service-layer checks** — `AuthorizationService::assertTenantAccess` / `assertPermission` before reads and writes.
-3. **IDOR protection** — Site show/update/delete load the record then verify tenant membership; foreign sites return 403.
+3. **IDOR protection** — Site show/update/delete authorize via membership-scoped queries; foreign sites return 403.
 4. **Cross-tenant create blocked** — Creating a site for a non-member tenant returns 403.
-5. **TenantScope** — Eloquent global scope applied when `TenantContext` is set.
-6. **Queue revalidation** — `TenantAwareJob` carries `tenantId` + `userId` and re-checks membership before work.
-7. **No client trust** — Browser-submitted tenant IDs are treated as hints and validated server-side.
+5. **Fail-closed TenantScope** — Tenant-owned Eloquent queries throw `TenantContextRequiredException` when no tenant context is active (no silent unscoped reads).
+6. **Explicit escapes only** — `withoutTenantIsolation()` for membership-constrained multi-tenant reads; `TenantContext::runWithPlatformBypass()` for audited platform-wide access.
+7. **Queue revalidation + cleanup** — `TenantAwareJob` re-checks membership and clears `TenantContext` in `finally`.
+8. **No client trust** — Browser-submitted tenant IDs are hints validated server-side.
 
 ## Automated evidence
 
-Feature suite `Tests\Feature\Tenancy\TenantIsolationTest` covers listing isolation, IDOR, cross-tenant FK protection, job context, and tenant index filtering.
+`Tests\Feature\Tenancy\TenantIsolationTest` covers listing isolation, IDOR, cross-tenant FK protection, job context, missing/stale context fail-closed behavior, and audited platform bypass.

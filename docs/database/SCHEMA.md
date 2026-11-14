@@ -61,7 +61,15 @@ Nullable `tenant_id` / `user_id`, morph columns, JSON payload, `request_id`, ind
 
 ## idempotency_keys
 
-Scoped unique key on (`tenant_id`,`user_id`,`key`,`route`) with request hash + stored response.
+| Column | Notes |
+| --- | --- |
+| tenant_id | nullable FK |
+| tenant_scope_id | non-null sentinel (`0` when no tenant) for UNIQUE |
+| user_id | nullable FK |
+| key, route, request_hash | claim identity |
+| status | `pending` / `completed` |
+| response_code / response_body | cached replay |
+| unique | (`tenant_scope_id`,`user_id`,`key`,`route`) |
 
 ## jobs / job_batches / failed_jobs
 

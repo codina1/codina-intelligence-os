@@ -15,6 +15,19 @@ class AuthSessionController extends Controller
 {
     public function __construct(private readonly AuditLogger $auditLogger) {}
 
+    /**
+     * SPA bootstrap: ensures the session is started and XSRF-TOKEN cookie is issued.
+     */
+    public function csrfCookie(Request $request): JsonResponse
+    {
+        $request->session()->regenerateToken();
+
+        return ApiResponse::success([
+            'csrf' => true,
+            'message' => 'Send the XSRF-TOKEN cookie value as X-XSRF-TOKEN on mutating requests.',
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $credentials = $request->validate([

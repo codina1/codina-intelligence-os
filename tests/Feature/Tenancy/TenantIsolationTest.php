@@ -5,6 +5,7 @@ namespace Tests\Feature\Tenancy;
 use App\Models\Site;
 use App\Models\Tenant;
 use App\Synchronization\Jobs\TenantAwareJob;
+use App\Tenancy\Exceptions\TenantContextRequiredException;
 use App\Tenancy\Services\TenantContext;
 use Tests\TestCase;
 
@@ -15,7 +16,7 @@ class TenantIsolationTest extends TestCase
         $admin = \App\Models\User::factory()->platformAdmin()->create();
 
         $this->actingAs($admin)
-            ->postJson('/api/v1/tenants', [
+            ->postJsonWithCsrf('/api/v1/tenants', [
                 'name' => 'New Tenant',
                 'slug' => 'new-tenant',
             ])
@@ -50,11 +51,11 @@ class TenantIsolationTest extends TestCase
         $this->actingAs($userA)->getJson('/api/v1/sites/'.$siteB->id)
             ->assertStatus(403);
 
-        $this->actingAs($userA)->patchJson('/api/v1/sites/'.$siteB->id, [
+        $this->actingAs($userA)->patchJsonWithCsrf('/api/v1/sites/'.$siteB->id, [
             'name' => 'Hacked',
         ])->assertStatus(403);
 
-        $this->actingAs($userA)->deleteJson('/api/v1/sites/'.$siteB->id)
+        $this->actingAs($userA)->deleteJsonWithCsrf('/api/v1/sites/'.$siteB->id)
             ->assertStatus(403);
 
         $this->assertDatabaseHas('sites', ['id' => $siteB->id, 'name' => $siteB->name]);
@@ -65,7 +66,7 @@ class TenantIsolationTest extends TestCase
         [$userA] = $this->makeTenantUser('tenant_owner');
         $tenantB = Tenant::factory()->create();
 
-        $this->actingAs($userA)->postJson('/api/v1/sites', [
+        $this->actingAs($userA)->postJsonWithCsrf('/api/v1/sites', [
             'tenant_id' => $tenantB->id,
             'name' => 'Cross Tenant Site',
             'primary_url' => 'https://cross.example.test',
@@ -82,6 +83,7 @@ class TenantIsolationTest extends TestCase
 
         $this->assertTrue($result['ok']);
         $this->assertSame($tenant->id, $result['tenant_id']);
+        $this->assertNull(app(TenantContext::class)->id(), 'TenantContext must be cleared after job');
 
         $this->expectException(\RuntimeException::class);
         (new TenantAwareJob($foreign->id, $user->id))->handle(app(TenantContext::class));
@@ -97,5 +99,48 @@ class TenantIsolationTest extends TestCase
 
         $this->assertContains($tenantA->slug, $slugs);
         $this->assertNotContains('hidden-tenant', $slugs);
+    }
+
+    public function test_missing_tenant_context_fails_closed(): void
+    {
+        $tenant = Tenant::factory()->create();
+        Site::factory()->create(['tenant_id' => $tenant->id]);
+
+        app(TenantContext::class)->clear();
+
+        $this->expectException(TenantContextRequiredException::class);
+        Site::query()->get();
+    }
+
+    public function test_stale_tenant_context_does_not_leak_after_clear(): void
+    {
+        $tenant = Tenant::factory()->create();
+        Site::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Scoped']);
+
+        $context = app(TenantContext::class);
+        $context->set($tenant);
+        $this->assertCount(1, Site::query()->get());
+
+        $context->clear();
+        $this->expectException(TenantContextRequiredException::class);
+        Site::query()->get();
+    }
+
+    public function test_platform_bypass_is_audited(): void
+    {
+        $admin = \App\Models\User::factory()->platformAdmin()->create();
+        $tenant = Tenant::factory()->create();
+        Site::factory()->create(['tenant_id' => $tenant->id]);
+
+        $count = app(TenantContext::class)->runWithPlatformBypass($admin, 'test.bypass', function () {
+            return Site::query()->count();
+        });
+
+        $this->assertSame(1, $count);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $admin->id,
+            'action' => 'platform.tenant_bypass',
+        ]);
+        $this->assertFalse(app(TenantContext::class)->isPlatformBypassActive());
     }
 }

@@ -5,9 +5,11 @@ namespace App\Sites\Services;
 use App\Audit\Services\AuditLogger;
 use App\Identity\Services\AuthorizationService;
 use App\Models\Site;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Tenancy\Services\TenantContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -22,35 +24,56 @@ class SiteService
 
     public function listForUser(User $user, ?int $tenantId = null, int $perPage = 15): LengthAwarePaginator
     {
-        $query = Site::query()->withoutGlobalScopes()->with('tenant')->orderBy('name');
-
         if ($user->isPlatformAdmin()) {
-            if ($tenantId !== null) {
-                $query->where('tenant_id', $tenantId);
-            }
-        } else {
-            $accessible = $user->accessibleTenantIds();
-            if ($tenantId !== null) {
-                $this->authorization->assertTenantAccess($user, $tenantId);
-                $this->authorization->assertPermission($user, 'sites.view', $tenantId);
-                $query->where('tenant_id', $tenantId);
-            } else {
-                $query->whereIn('tenant_id', $accessible);
-            }
+            return $this->tenantContext->runWithPlatformBypass(
+                $user,
+                'sites.list.platform',
+                function () use ($tenantId, $perPage) {
+                    $query = Site::query()->with('tenant')->orderBy('name');
+                    if ($tenantId !== null) {
+                        $query->where('tenant_id', $tenantId);
+                    }
+
+                    return $query->paginate($perPage);
+                }
+            );
         }
+
+        $query = $this->membershipScopedQuery($user, $tenantId);
 
         return $query->paginate($perPage);
     }
 
     public function findForUser(User $user, int $siteId): Site
     {
-        $site = Site::query()->withoutGlobalScopes()->with('tenant')->find($siteId);
+        if ($user->isPlatformAdmin()) {
+            return $this->tenantContext->runWithPlatformBypass(
+                $user,
+                'sites.find.platform',
+                function () use ($siteId, $user) {
+                    $site = Site::query()->with('tenant')->find($siteId);
+                    if ($site === null) {
+                        throw new NotFoundHttpException('Site not found.');
+                    }
+                    $this->authorization->assertPermission($user, 'sites.view', (int) $site->tenant_id);
+
+                    return $site;
+                }
+            );
+        }
+
+        $site = $this->membershipScopedQuery($user)->whereKey($siteId)->first();
 
         if ($site === null) {
+            // Distinguish unknown vs unauthorized without leaking foreign existence when possible.
+            $existsAnywhere = Site::query()->withoutTenantIsolation()->whereKey($siteId)->exists();
+            if ($existsAnywhere) {
+                throw new AccessDeniedHttpException('Cross-tenant access denied.');
+            }
+
             throw new NotFoundHttpException('Site not found.');
         }
 
-        $this->authorization->assertTenantAccess($user, (int) $site->tenant_id);
         $this->authorization->assertPermission($user, 'sites.view', (int) $site->tenant_id);
 
         return $site;
@@ -62,9 +85,7 @@ class SiteService
         $this->authorization->assertTenantAccess($user, $tenantId);
         $this->authorization->assertPermission($user, 'sites.manage', $tenantId);
 
-        $this->tenantContext->set(
-            \App\Models\Tenant::query()->findOrFail($tenantId)
-        );
+        $this->tenantContext->set(Tenant::query()->findOrFail($tenantId));
 
         $site = Site::query()->create([
             'tenant_id' => $tenantId,
@@ -92,6 +113,8 @@ class SiteService
             throw new AccessDeniedHttpException('Cannot move a site across tenants.');
         }
 
+        $this->tenantContext->set($site->tenant);
+
         $site->fill(collect($data)->only(['name', 'slug', 'primary_url', 'status', 'settings'])->all());
         $site->save();
 
@@ -108,10 +131,35 @@ class SiteService
         $this->authorization->assertPermission($user, 'sites.manage', (int) $site->tenant_id);
 
         $tenantId = (int) $site->tenant_id;
+        $this->tenantContext->set($site->tenant);
         $site->delete();
 
         $this->auditLogger->log('site.deleted', $user, null, [
             'site_id' => $siteId,
         ], $tenantId);
+    }
+
+    /**
+     * Membership-authorized multi-tenant reads — never uses silent withoutGlobalScopes().
+     */
+    private function membershipScopedQuery(User $user, ?int $tenantId = null): Builder
+    {
+        $accessible = $user->accessibleTenantIds();
+
+        if ($tenantId !== null) {
+            $this->authorization->assertTenantAccess($user, $tenantId);
+            $this->authorization->assertPermission($user, 'sites.view', $tenantId);
+            $accessible = [$tenantId];
+        }
+
+        if ($accessible === []) {
+            throw new AccessDeniedHttpException('No accessible tenants.');
+        }
+
+        return Site::query()
+            ->withoutTenantIsolation()
+            ->with('tenant')
+            ->whereIn('tenant_id', $accessible)
+            ->orderBy('name');
     }
 }

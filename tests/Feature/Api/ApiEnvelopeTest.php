@@ -23,7 +23,7 @@ class ApiEnvelopeTest extends TestCase
         [$user, $tenant] = $this->makeTenantUser('tenant_owner');
 
         $this->actingAs($user)
-            ->postJson('/api/v1/sites', [
+            ->postJsonWithCsrf('/api/v1/sites', [
                 'tenant_id' => $tenant->id,
             ])
             ->assertStatus(422)
@@ -40,7 +40,7 @@ class ApiEnvelopeTest extends TestCase
         [$viewer, $tenant] = $this->makeTenantUser('viewer');
 
         $this->actingAs($viewer)
-            ->postJson('/api/v1/sites', [
+            ->postJsonWithCsrf('/api/v1/sites', [
                 'tenant_id' => $tenant->id,
                 'name' => 'Nope',
                 'primary_url' => 'https://nope.example.test',

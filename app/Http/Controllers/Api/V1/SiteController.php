@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Identity\Services\AuthorizationService;
 use App\Shared\Support\ApiResponse;
+use App\Shared\Support\IdempotencyGuard;
 use App\Sites\Services\SiteService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ class SiteController extends Controller
     public function __construct(
         private readonly SiteService $sites,
         private readonly AuthorizationService $authorization,
+        private readonly IdempotencyGuard $idempotency,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -72,16 +74,18 @@ class SiteController extends Controller
 
         $request->attributes->set('tenant_id', (int) $data['tenant_id']);
 
-        $site = $this->sites->create($user, $data);
+        return $this->idempotency->handle($request, $user, function () use ($user, $data) {
+            $site = $this->sites->create($user, $data);
 
-        return ApiResponse::success([
-            'id' => $site->id,
-            'tenant_id' => $site->tenant_id,
-            'name' => $site->name,
-            'slug' => $site->slug,
-            'primary_url' => $site->primary_url,
-            'status' => $site->status,
-        ], status: 201);
+            return ApiResponse::success([
+                'id' => $site->id,
+                'tenant_id' => $site->tenant_id,
+                'name' => $site->name,
+                'slug' => $site->slug,
+                'primary_url' => $site->primary_url,
+                'status' => $site->status,
+            ], status: 201);
+        });
     }
 
     public function update(Request $request, int $id): JsonResponse

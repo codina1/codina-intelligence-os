@@ -5,6 +5,7 @@ info:
   description: |
     Phase 01 implemented endpoints only.
     Authentication uses first-party session cookies after POST /api/v1/auth/login.
+    SPA clients must call GET /api/v1/auth/csrf-cookie then send X-XSRF-TOKEN on mutating requests.
 servers:
   - url: http://localhost:8000
     description: Local development
@@ -29,11 +30,21 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
         '503':
           description: Degraded
+  /api/v1/auth/csrf-cookie:
+    get:
+      tags: [Auth]
+      summary: Issue CSRF/session cookies for SPA clients
+      operationId: csrfCookie
+      responses:
+        '200':
+          description: CSRF cookie issued
   /api/v1/auth/login:
     post:
       tags: [Auth]
       summary: Create session
       operationId: login
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
       requestBody:
         required: true
         content:
@@ -52,6 +63,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserEnvelope'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
         '422':
           $ref: '#/components/responses/ValidationError'
         '429':
@@ -274,7 +287,19 @@ components:
       in: path
       required: true
       schema: { type: integer }
+    CsrfHeader:
+      name: X-XSRF-TOKEN
+      in: header
+      required: false
+      description: SPA CSRF header (alternatives X-CSRF-TOKEN or body _token)
+      schema: { type: string }
   responses:
+    CsrfMismatch:
+      description: CSRF token missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
     Unauthenticated:
       description: Missing or invalid session
       content:
