@@ -1,4 +1,4 @@
-name: Phase 02B PHPUnit
+name: Phase 02C PHPUnit
 
 on:
   push:
@@ -104,6 +104,12 @@ jobs:
           ./vendor/bin/phpunit --colors=never tests/Feature/Synchronization
           echo "::endgroup::"
 
+      - name: Phase 02C normalization suite
+        run: |
+          echo "::group::Phase 02C"
+          ./vendor/bin/phpunit --colors=never tests/Feature/Normalization
+          echo "::endgroup::"
+
       - name: Critical security & concurrency suite (fail on skipped)
         run: |
           echo "::group::Critical tests"
@@ -119,11 +125,12 @@ jobs:
       - name: Summarize concurrency and security results
         if: always()
         run: |
-          echo "## Phase 02B CI results" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Phase 02C CI results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Phase 01 regression: see job logs" >> "$GITHUB_STEP_SUMMARY"
           echo "- Phase 02A registry/security: see job logs" >> "$GITHUB_STEP_SUMMARY"
           echo "- Phase 02B sync engine: see job logs" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Phase 02C normalization: see job logs" >> "$GITHUB_STEP_SUMMARY"
           echo "- Critical group (security/concurrency): see job logs" >> "$GITHUB_STEP_SUMMARY"
           echo "- Full suite JUnit: junit.xml artifact" >> "$GITHUB_STEP_SUMMARY"
           echo "- External HTTP: CODINA_ALLOW_EXTERNAL_HTTP=false" >> "$GITHUB_STEP_SUMMARY"

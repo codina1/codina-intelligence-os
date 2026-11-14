@@ -4,7 +4,9 @@ use App\Http\Controllers\Api\V1\AuthSessionController;
 use App\Http\Controllers\Api\V1\ConnectorProviderController;
 use App\Http\Controllers\Api\V1\DataSourceController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\InventoryController;
 use App\Http\Controllers\Api\V1\MockConnectorController;
+use App\Http\Controllers\Api\V1\NormalizationController;
 use App\Http\Controllers\Api\V1\SiteController;
 use App\Http\Controllers\Api\V1\SyncRunController;
 use App\Http\Controllers\Api\V1\TenantController;
@@ -99,5 +101,24 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/sync-runs/{id}/cancel', [SyncRunController::class, 'cancel'])
             ->middleware('throttle:api-writes')
             ->name('api.v1.sync-runs.cancel');
+
+        Route::get('/inventory/summary', [InventoryController::class, 'summary'])
+            ->name('api.v1.inventory.summary');
+        Route::get('/inventory/entities', [InventoryController::class, 'entities'])
+            ->name('api.v1.inventory.entities');
+        Route::get('/inventory/entities/{id}', [InventoryController::class, 'showEntity'])
+            ->name('api.v1.inventory.entities.show');
+        Route::get('/inventory/entities/{id}/versions', [InventoryController::class, 'entityVersions'])
+            ->name('api.v1.inventory.entities.versions');
+        Route::get('/inventory/metrics', [InventoryController::class, 'metrics'])
+            ->name('api.v1.inventory.metrics');
+        Route::get('/inventory/data-quality', [InventoryController::class, 'dataQuality'])
+            ->name('api.v1.inventory.data-quality');
+
+        Route::post('/data-sources/{id}/normalize', [NormalizationController::class, 'start'])
+            ->middleware('throttle:api-writes')
+            ->name('api.v1.data-sources.normalize');
+        Route::get('/normalization-runs/{id}', [NormalizationController::class, 'show'])
+            ->name('api.v1.normalization-runs.show');
     });
 });

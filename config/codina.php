@@ -30,6 +30,8 @@ return [
         'connectors.view',
         'connectors.manage',
         'sync.manage',
+        'inventory.view',
+        'normalize.manage',
         'audit.view',
         'platform.admin',
     ],
