@@ -1,0 +1,14 @@
+[
+    {
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Missing id"
+    },
+    {
+        "id": 2,
+        "source": "tutor_lms_pro",
+        "schema_version": "1.0",
+        "title": "Valid",
+        "status": "publish"
+    }
+]

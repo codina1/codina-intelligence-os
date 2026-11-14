@@ -1,0 +1,14 @@
+[
+    {
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Missing id"
+    },
+    {
+        "id": 2,
+        "source": "wordpress",
+        "schema_version": "1.0",
+        "title": "Valid",
+        "status": "published"
+    }
+]

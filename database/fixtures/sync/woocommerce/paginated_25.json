@@ -1,0 +1,177 @@
+[
+    {
+        "id": 1,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 1",
+        "status": "publish"
+    },
+    {
+        "id": 2,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 2",
+        "status": "publish"
+    },
+    {
+        "id": 3,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 3",
+        "status": "publish"
+    },
+    {
+        "id": 4,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 4",
+        "status": "publish"
+    },
+    {
+        "id": 5,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 5",
+        "status": "publish"
+    },
+    {
+        "id": 6,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 6",
+        "status": "publish"
+    },
+    {
+        "id": 7,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 7",
+        "status": "publish"
+    },
+    {
+        "id": 8,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 8",
+        "status": "publish"
+    },
+    {
+        "id": 9,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 9",
+        "status": "publish"
+    },
+    {
+        "id": 10,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 10",
+        "status": "publish"
+    },
+    {
+        "id": 11,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 11",
+        "status": "publish"
+    },
+    {
+        "id": 12,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 12",
+        "status": "publish"
+    },
+    {
+        "id": 13,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 13",
+        "status": "publish"
+    },
+    {
+        "id": 14,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 14",
+        "status": "publish"
+    },
+    {
+        "id": 15,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 15",
+        "status": "publish"
+    },
+    {
+        "id": 16,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 16",
+        "status": "publish"
+    },
+    {
+        "id": 17,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 17",
+        "status": "publish"
+    },
+    {
+        "id": 18,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 18",
+        "status": "publish"
+    },
+    {
+        "id": 19,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 19",
+        "status": "publish"
+    },
+    {
+        "id": 20,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 20",
+        "status": "publish"
+    },
+    {
+        "id": 21,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 21",
+        "status": "publish"
+    },
+    {
+        "id": 22,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 22",
+        "status": "publish"
+    },
+    {
+        "id": 23,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 23",
+        "status": "publish"
+    },
+    {
+        "id": 24,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 24",
+        "status": "publish"
+    },
+    {
+        "id": 25,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Fixture woocommerce item 25",
+        "status": "publish"
+    }
+]

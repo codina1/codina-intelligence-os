@@ -1,0 +1,14 @@
+[
+    {
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Missing id"
+    },
+    {
+        "id": 2,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Valid",
+        "clicks": 1
+    }
+]

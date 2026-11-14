@@ -1,0 +1,72 @@
+[
+    {
+        "id": 1,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 1",
+        "clicks": 1
+    },
+    {
+        "id": 2,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 2",
+        "clicks": 1
+    },
+    {
+        "id": 3,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Changed on second run google_search_console",
+        "clicks": 1
+    },
+    {
+        "id": 4,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 4",
+        "clicks": 1
+    },
+    {
+        "id": 5,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 5",
+        "clicks": 1
+    },
+    {
+        "id": 6,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 6",
+        "clicks": 1
+    },
+    {
+        "id": 7,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 7",
+        "clicks": 1
+    },
+    {
+        "id": 8,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 8",
+        "clicks": 1
+    },
+    {
+        "id": 9,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 9",
+        "clicks": 1
+    },
+    {
+        "id": 10,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Fixture google_search_console item 10",
+        "clicks": 1
+    }
+]

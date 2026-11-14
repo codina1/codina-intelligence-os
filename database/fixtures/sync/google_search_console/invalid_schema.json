@@ -1,0 +1,9 @@
+[
+    {
+        "id": 1,
+        "source": "google_search_console",
+        "schema_version": "9.9",
+        "query": "Bad schema",
+        "api_token": "should-reject"
+    }
+]

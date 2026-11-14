@@ -1,0 +1,26 @@
+{
+    "initial_watermark": "2026-01-01T00:00:00Z",
+    "final_watermark": "2026-01-02T00:00:00Z",
+    "changes": [
+        {
+            "changed_at": "2026-01-01T12:00:00Z",
+            "record": {
+                "id": 1,
+                "source": "google_search_console",
+                "schema_version": "1.0",
+                "query": "Changed google_search_console item 1",
+                "clicks": 1
+            }
+        },
+        {
+            "changed_at": "2026-01-01T13:00:00Z",
+            "record": {
+                "id": 101,
+                "source": "google_search_console",
+                "schema_version": "1.0",
+                "query": "New google_search_console item 101",
+                "clicks": 1
+            }
+        }
+    ]
+}

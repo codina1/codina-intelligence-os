@@ -1,0 +1,23 @@
+[
+    {
+        "id": 7,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Dup A",
+        "clicks": 1
+    },
+    {
+        "id": 7,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Dup B",
+        "clicks": 1
+    },
+    {
+        "id": 8,
+        "source": "google_search_console",
+        "schema_version": "1.0",
+        "query": "Unique",
+        "clicks": 1
+    }
+]

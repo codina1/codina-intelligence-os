@@ -29,6 +29,7 @@ return [
         'sites.manage',
         'connectors.view',
         'connectors.manage',
+        'sync.manage',
         'audit.view',
         'platform.admin',
     ],

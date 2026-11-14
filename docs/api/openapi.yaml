@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: CODINA Intelligence OS API
-  version: 1.1.0
+  version: 1.2.0
   description: |
-    Phase 01 + Phase 02A implemented endpoints only (mock data source registry).
+    Phase 01 + Phase 02A + Phase 02B (mock sync engine) implemented endpoints.
     Authentication uses first-party session cookies after POST /api/v1/auth/login.
     SPA clients must call GET /api/v1/auth/csrf-cookie then send X-XSRF-TOKEN on mutating requests.
-    Phase 02A does not expose live OAuth, credential exchange, or sync endpoints.
+    No live OAuth, credential exchange, or external HTTP. Sync results are always simulated.
 servers:
   - url: http://localhost:8000
     description: Local development
@@ -18,6 +18,7 @@ tags:
   - name: MockConnectors
   - name: ConnectorProviders
   - name: DataSources
+  - name: SyncRuns
 paths:
   /api/v1/health:
     get:
@@ -486,6 +487,137 @@ paths:
           description: Disabled
         '422':
           description: Invalid transition
+  /api/v1/data-sources/{id}/sync:
+    post:
+      tags: [SyncRuns]
+      summary: Queue a mock sync run (always simulated)
+      operationId: startSyncRun
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sync_type, entity_type]
+              properties:
+                sync_type: { type: string, enum: [full, incremental] }
+                entity_type: { type: string }
+                scope_key: { type: string, default: default }
+      responses:
+        '202':
+          description: Sync run queued/executed (mock)
+        '409':
+          description: Active scope conflict
+        '422':
+          description: Disabled or non-mock source
+  /api/v1/data-sources/{id}/checkpoints:
+    get:
+      tags: [SyncRuns]
+      summary: List checkpoints for a mock data source
+      operationId: listCheckpoints
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Paginated checkpoints (no lease/fencing fields)
+  /api/v1/data-sources/{id}/sync-health:
+    get:
+      tags: [SyncRuns]
+      summary: Mock sync health summary for a data source
+      operationId: syncHealth
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Simulated sync health
+  /api/v1/sync-runs:
+    get:
+      tags: [SyncRuns]
+      summary: List sync runs
+      operationId: listSyncRuns
+      security: [{ sessionAuth: [] }]
+      responses:
+        '200':
+          description: Paginated sync runs
+  /api/v1/sync-runs/{id}:
+    get:
+      tags: [SyncRuns]
+      summary: Show a sync run
+      operationId: showSyncRun
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Sync run (simulated)
+        '404':
+          description: Not found (also used for cross-tenant)
+  /api/v1/sync-runs/{id}/attempts:
+    get:
+      tags: [SyncRuns]
+      summary: List attempts for a sync run
+      operationId: listSyncAttempts
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Paginated attempts
+  /api/v1/sync-runs/{id}/retry:
+    post:
+      tags: [SyncRuns]
+      summary: Retry a failed or partial mock sync run
+      operationId: retrySyncRun
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '202':
+          description: Retry queued/executed
+        '422':
+          description: Terminal or ineligible run
+  /api/v1/sync-runs/{id}/cancel:
+    post:
+      tags: [SyncRuns]
+      summary: Request cancellation of a sync run
+      operationId: cancelSyncRun
+      security: [{ sessionAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Cancellation acknowledged
+        '422':
+          description: Already terminal
 components:
   securitySchemes:
     sessionAuth:

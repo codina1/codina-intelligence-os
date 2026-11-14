@@ -1,0 +1,14 @@
+[
+    {
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Missing id"
+    },
+    {
+        "id": 2,
+        "source": "woocommerce",
+        "schema_version": "1.0",
+        "name": "Valid",
+        "status": "publish"
+    }
+]

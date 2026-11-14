@@ -196,6 +196,7 @@ class ProviderSettingsValidator
             'fixture_dataset' => $clean['fixture_dataset'] ?? 'success',
             'pagination_size' => $clean['pagination_size'] ?? 10,
             'simulated_error_scenario' => $clean['simulated_error_scenario'] ?? 'none',
+            'incremental_dataset' => $clean['incremental_dataset'] ?? 'incremental',
             'reporting_timezone' => $clean['reporting_timezone'] ?? 'UTC',
         ];
     }

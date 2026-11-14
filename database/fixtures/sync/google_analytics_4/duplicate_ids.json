@@ -1,0 +1,23 @@
+[
+    {
+        "id": 7,
+        "source": "google_analytics_4",
+        "schema_version": "1.0",
+        "metric": "Dup A",
+        "value": 10
+    },
+    {
+        "id": 7,
+        "source": "google_analytics_4",
+        "schema_version": "1.0",
+        "metric": "Dup B",
+        "value": 10
+    },
+    {
+        "id": 8,
+        "source": "google_analytics_4",
+        "schema_version": "1.0",
+        "metric": "Unique",
+        "value": 10
+    }
+]
